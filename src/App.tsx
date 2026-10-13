@@ -30,6 +30,7 @@ import {
   LuPackage,
   LuPlay,
   LuSettings,
+  LuSignpost,
   LuSquare,
   LuSun,
 } from "react-icons/lu";
@@ -46,6 +47,7 @@ import { OutputTerminal, type OutputTerminalHandle } from "./components/OutputTe
 import { ProjectMenu } from "./components/ProjectMenu";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
+import { Walkthrough, type WalkthroughHandle } from "./components/Walkthrough";
 import { showError, toaster } from "./components/toast";
 import { useFileActions } from "./components/useFileActions";
 import { EXAMPLES } from "./examples";
@@ -73,6 +75,7 @@ export default function App() {
   const settings = useSettings();
   const output = useRef<OutputTerminalHandle>(null);
   const console_ = useRef<ConsoleHandle>(null);
+  const walkthrough = useRef<WalkthroughHandle>(null);
   const sink = useMemo<OutputSink>(
     () => ({
       write: (text, stream, target) =>
@@ -280,6 +283,7 @@ export default function App() {
     { id: "theme-dark", title: "Theme: Dark", run: () => setColorMode("dark") },
     { id: "theme-system", title: "Theme: Match system", run: () => setColorMode("system") },
     { id: "shortcuts", title: "Keyboard shortcuts", run: () => setShowShortcuts(true) },
+    { id: "walkthrough", title: "Start walkthrough", run: () => walkthrough.current?.start() },
   ];
   const commandsRef = useRef(commands);
   useEffect(() => {
@@ -429,7 +433,7 @@ export default function App() {
         </HStack>
         <ProjectMenu ws={ws} />
 
-        <HStack gap="2">
+        <HStack gap="2" data-tour="run">
           <Button
             size="sm"
             colorPalette="green"
@@ -467,10 +471,11 @@ export default function App() {
             if (value === "packages") setShowPackages(true);
             else if (value === "shortcuts") setShowShortcuts(true);
             else if (value === "settings") setShowSettings(true);
+            else if (value === "walkthrough") walkthrough.current?.start();
           }}
         >
           <Menu.Trigger asChild>
-            <IconButton size="sm" variant="ghost" ms="auto" hideFrom="md" aria-label="More">
+            <IconButton size="sm" variant="ghost" ms="auto" hideFrom="md" aria-label="More" data-tour="more">
               <LuEllipsisVertical />
             </IconButton>
           </Menu.Trigger>
@@ -507,6 +512,9 @@ export default function App() {
                 <Menu.Item value="shortcuts">
                   <LuCircleHelp /> Keyboard shortcuts
                 </Menu.Item>
+                <Menu.Item value="walkthrough">
+                  <LuSignpost /> Start walkthrough
+                </Menu.Item>
               </Menu.Content>
             </Menu.Positioner>
           </Portal>
@@ -521,7 +529,7 @@ export default function App() {
           )}
           <Popover.Root positioning={{ placement: "bottom-end" }}>
             <Popover.Trigger asChild>
-              <Button size="xs" variant="ghost" disabled={py.state === "loading"} aria-label="Packages">
+              <Button size="xs" variant="ghost" disabled={py.state === "loading"} aria-label="Packages" data-tour="packages">
                 <LuPackage />
                 <Box as="span" hideBelow="md">
                   Packages
@@ -542,7 +550,7 @@ export default function App() {
 
           <Menu.Root onSelect={({ value }) => setColorMode(value as ColorModeSetting)}>
             <Menu.Trigger asChild>
-              <IconButton size="xs" variant="ghost" aria-label="Color theme" title="Color theme">
+              <IconButton size="xs" variant="ghost" aria-label="Color theme" title="Color theme" data-tour="theme">
                 {THEME_ICONS[themeSetting]}
               </IconButton>
             </Menu.Trigger>
@@ -572,6 +580,7 @@ export default function App() {
             size="xs"
             variant="ghost"
             aria-label="Settings"
+            data-tour="settings"
             title={`Settings (${formatKeys("Mod+,")})`}
             onClick={() => setShowSettings(true)}
           >
@@ -581,13 +590,14 @@ export default function App() {
             size="xs"
             variant="ghost"
             aria-label="Keyboard shortcuts"
+            data-tour="help"
             hideBelow="md"
             title={`Keyboard shortcuts · all commands: ${formatKeys(PALETTE_KEYS)}`}
             onClick={() => setShowShortcuts(true)}
           >
             <LuCircleHelp />
           </IconButton>
-          <Badge colorPalette={STATE_COLOR[py.state]} variant="solid" ms="1">
+          <Badge colorPalette={STATE_COLOR[py.state]} variant="solid" ms="1" data-tour="status">
             {py.state}
           </Badge>
         </HStack>
@@ -608,11 +618,11 @@ export default function App() {
           borderWidth="0"
         >
           {/* Each pane scrolls on its own; drag the divider to resize. */}
-          <Splitter.Panel id="editor" minH="0">
+          <Splitter.Panel id="editor" data-tour="editor" minH="0">
             {editorPane}
           </Splitter.Panel>
           <Splitter.ResizeTrigger id="editor:output" aria-label="Resize editor and output" />
-          <Splitter.Panel id="output" minH="0">
+          <Splitter.Panel id="output" data-tour="panel" minH="0">
             {outputPane}
           </Splitter.Panel>
         </Splitter.Root>
@@ -629,15 +639,15 @@ export default function App() {
           onResize={(d) => setSizes(d.size)}
           borderWidth="0"
         >
-          <Splitter.Panel id="files">
+          <Splitter.Panel id="files" data-tour="explorer">
             <FileExplorer ws={ws} />
           </Splitter.Panel>
           <Splitter.ResizeTrigger id="files:editor" aria-label="Resize file explorer" />
-          <Splitter.Panel id="editor">
+          <Splitter.Panel id="editor" data-tour="editor">
             {editorPane}
           </Splitter.Panel>
           <Splitter.ResizeTrigger id="editor:output" aria-label="Resize output panel" />
-          <Splitter.Panel id="output">
+          <Splitter.Panel id="output" data-tour="panel">
             {outputPane}
           </Splitter.Panel>
         </Splitter.Root>
@@ -705,6 +715,7 @@ export default function App() {
         </Portal>
       </Dialog.Root>
       <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
+      <Walkthrough ref={walkthrough} ready={ws.loaded} />
       <ShortcutsDialog open={showShortcuts} onClose={() => setShowShortcuts(false)} commands={commands} />
     </Flex>
   );

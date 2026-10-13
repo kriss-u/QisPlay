@@ -72,7 +72,7 @@ export function ProjectMenu({ ws }: { ws: Workspace }) {
   return (
     <Menu.Root onSelect={({ value }) => void onSelect(value)} positioning={{ placement: "bottom-start" }}>
       <Menu.Trigger asChild>
-        <Button size="sm" variant="outline" maxW={{ base: "30vw", md: "260px" }} minW="0" aria-label="Switch project">
+        <Button size="sm" variant="outline" maxW={{ base: "30vw", md: "260px" }} minW="0" aria-label="Switch project" data-tour="project">
           <Text truncate>{current?.name ?? "Loading…"}</Text>
           <LuChevronDown />
         </Button>
