@@ -11,6 +11,11 @@ body,
   height: 100%;
 }
 
+/* VS Code leaves font ligatures off by default ("!=" stays two characters). */
+.cm-editor .cm-scroller {
+  font-variant-ligatures: none;
+}
+
 /* CodeMirror find/replace panel, styled with Chakra's tokens so it follows the theme. */
 .cm-editor .cm-panels {
   background: var(--chakra-colors-bg-subtle) !important;

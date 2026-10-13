@@ -399,7 +399,7 @@ export default function App() {
 
   return (
     <Flex direction="column" h="100dvh" bg="bg" color="fg">
-      <Flex as="header" align="center" gap={{ base: "1.5", md: "3" }} px={{ base: "2", md: "3" }} py="2" borderBottomWidth="1px">
+      <Flex as="header" align="center" gap={{ base: "1.5", md: "3" }} px={{ base: "2", md: "3" }} py="2" borderBottomWidth="1px" bg="bg.titlebar">
         {compact && (
           <IconButton size="sm" variant="ghost" aria-label="Show files" title="Files" onClick={() => setDrawerOpen(true)}>
             <LuMenu />
@@ -637,9 +637,8 @@ export default function App() {
         h="6"
         px="3"
         flexShrink={0}
-        borderTopWidth="1px"
-        bg="bg.subtle"
-        color="fg.muted"
+        bg="bg.statusbar"
+        color="fg.statusbar"
         fontSize="xs"
       >
         <Text truncate hideBelow="md">
@@ -648,7 +647,7 @@ export default function App() {
         </Text>
         <Text ms="auto" flexShrink={0}>
           Made with{" "}
-          <Box as="span" role="img" aria-label="love" color="red.500">
+          <Box as="span" role="img" aria-label="love">
             ❤️
           </Box>{" "}
           by Krishna Upadhyay

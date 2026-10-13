@@ -5,6 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useColorMode } from "../app/colorMode";
 import { terminalTheme } from "../app/editorThemes";
+import { MONO_FONT } from "../app/system";
 
 export type Stream = "stdout" | "stderr" | "info" | "input";
 
@@ -32,23 +33,36 @@ export const OutputTerminal = forwardRef<OutputTerminalHandle, { label?: string 
       convertEol: true,
       cursorBlink: false,
       scrollback: 10000,
-      fontFamily: '"JetBrains Mono", "Fira Code", Menlo, Consolas, monospace',
+      fontFamily: MONO_FONT,
       fontSize: 13,
       screenReaderMode: false,
     });
     const fit = new FitAddon();
     t.loadAddon(fit);
-    t.open(host.current!);
     t.write("\x1b[?25l"); // hide cursor: this is an output view, not a shell
-    t.textarea?.setAttribute("aria-label", label);
-    fit.fit();
-    term.current = t;
+    term.current = t; // writes before open() are buffered
+
+    // xterm measures the cell size on open(), so wait for the web font first.
+    let disposed = false;
+    let opened = false;
+    const el = host.current!;
+    void document.fonts
+      .load(`13px ${MONO_FONT}`)
+      .catch(() => {})
+      .then(() => {
+        if (disposed) return;
+        t.open(el);
+        t.textarea?.setAttribute("aria-label", label);
+        opened = true;
+        fit.fit();
+      });
 
     const observer = new ResizeObserver(() => {
-      if (host.current?.offsetParent) fit.fit(); // skip while hidden (e.g. inactive tab)
+      if (opened && el.offsetParent) fit.fit(); // skip while hidden (e.g. inactive tab)
     });
-    observer.observe(host.current!);
+    observer.observe(el);
     return () => {
+      disposed = true;
       observer.disconnect();
       t.dispose();
       term.current = null;

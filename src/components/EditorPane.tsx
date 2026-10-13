@@ -58,10 +58,10 @@ export function EditorPane({ ws, onRun, onRunSelection, complete }: Props) {
               cursor="pointer"
               flexShrink={0}
               borderEndWidth="1px"
-              bg={selected ? "bg" : undefined}
+              bg={selected ? "bg" : "bg.tab"}
               color={selected ? "fg" : "fg.muted"}
               borderTopWidth="2px"
-              borderTopColor={selected ? "blue.400" : "transparent"}
+              borderTopColor={selected ? "blue.solid" : "transparent"}
               onClick={() => ws.setActive(path)}
               onAuxClick={(e) => e.button === 1 && ws.closeTab(path)}
               title={path}

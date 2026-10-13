@@ -8,6 +8,7 @@ import { python } from "@codemirror/lang-python";
 import { gotoLine, openSearchPanel, search } from "@codemirror/search";
 import CodeMirror, { EditorState, keymap, Prec } from "@uiw/react-codemirror";
 import { useEffect, useMemo, useRef } from "react";
+import { activeLine } from "../app/activeLine";
 import { importChange } from "../app/autoImport";
 import { useColorMode } from "../app/colorMode";
 import { editorTheme } from "../app/editorThemes";
@@ -107,6 +108,7 @@ export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelect
       python(),
       search({ top: true }), // find/replace at the top, like VS Code
       rainbowBrackets,
+      activeLine,
       PHRASES,
       autocompletion({ override: [jediSource], activateOnTypingDelay: 150, maxRenderedOptions: 60 }),
       // VS Code habits on top of CodeMirror's defaults (which already cover
@@ -147,7 +149,7 @@ export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelect
       theme={editorTheme(colorMode)}
       height="100%"
       style={{ height: "100%", fontSize: 14 }}
-      basicSetup={{ tabSize: 4, autocompletion: true }}
+      basicSetup={{ tabSize: 4, autocompletion: true, highlightActiveLine: false }}
     />
   );
 }
