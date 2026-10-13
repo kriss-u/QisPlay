@@ -1,0 +1,108 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* Let CodeMirror fill its pane. */
+.cm-theme-dark,
+.cm-editor {
+  height: 100%;
+}
+
+/* CodeMirror find/replace panel, styled with Chakra's tokens so it follows the theme. */
+.cm-editor .cm-panels {
+  background: var(--chakra-colors-bg-subtle) !important;
+  color: var(--chakra-colors-fg) !important;
+}
+.cm-editor .cm-panels-top {
+  border-bottom: 1px solid var(--chakra-colors-border) !important;
+}
+.cm-editor .cm-search {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 40px 8px 10px !important;
+  font-family: var(--chakra-fonts-body);
+  font-size: 13px;
+}
+.cm-editor .cm-search br {
+  flex-basis: 100%;
+  height: 0;
+  content: "";
+}
+.cm-editor .cm-search .cm-textfield {
+  flex: 0 1 280px;
+  min-width: 180px;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--chakra-colors-border-emphasized);
+  border-radius: var(--chakra-radii-md);
+  background: var(--chakra-colors-bg);
+  color: var(--chakra-colors-fg);
+  font-family: var(--chakra-fonts-mono, ui-monospace, monospace);
+  font-size: 13px;
+}
+.cm-editor .cm-search .cm-textfield:focus {
+  outline: 2px solid var(--chakra-colors-blue-focus-ring);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+.cm-editor .cm-search .cm-button {
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--chakra-colors-border-emphasized);
+  border-radius: var(--chakra-radii-md);
+  background: var(--chakra-colors-bg) !important;
+  background-image: none !important;
+  color: var(--chakra-colors-fg);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.cm-editor .cm-search .cm-button:hover {
+  background: var(--chakra-colors-bg-muted) !important;
+}
+.cm-editor .cm-search .cm-button:active {
+  background: var(--chakra-colors-bg-emphasized) !important;
+}
+.cm-editor .cm-search .cm-button:focus-visible {
+  outline: 2px solid var(--chakra-colors-blue-focus-ring);
+  outline-offset: 1px;
+}
+.cm-editor .cm-search label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 2px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.cm-editor .cm-search input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--chakra-colors-blue-solid);
+}
+.cm-editor .cm-search button[name="close"] {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--chakra-radii-md);
+  background: none;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cm-editor .cm-search button[name="close"]:hover {
+  background: var(--chakra-colors-bg-muted);
+  color: var(--chakra-colors-fg);
+}

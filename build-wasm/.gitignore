@@ -1,0 +1,7 @@
+# Everything here is reproducible with ./build.sh; only the script and patches are source.
+.venv/
+sdists/
+src/
+deps/
+dist/
+*.log

@@ -1,0 +1,345 @@
+Build qiskit-aer 0.17.2 for WebAssembly (Pyodide 314, wasm32-unknown-emscripten).
+
+- CMake: no AVX2 flags from the host CPU; no conan; header-only nlohmann_json and
+  spdlog plus Pyodide's libopenblas are provided in wasm-deps/ by build.sh.
+- wasm-deps/include/omp.h: single-threaded OpenMP runtime stub (no OpenMP in
+  Emscripten; some headers call omp_* without #ifdef _OPENMP).
+- BLAS/LAPACK prototypes return int on emscripten to match Pyodide's f2c-style
+  OpenBLAS (WebAssembly rejects mismatched call signatures at link time).
+- get_system_memory_mb() returned 0 under Emscripten, which made every shot
+  produce no data; report the 4 GiB wasm32 limit instead.
+- Jobs run on a synchronous executor (threads cannot be started under Pyodide).
+- psutil is optional (no wasm build); conan dropped from build requirements.
+
+--- a/cmake/dependency_utils.cmake
++++ b/cmake/dependency_utils.cmake
+@@ -13,7 +13,14 @@
+ 
+ macro(setup_dependencies)
+ 	# Defines AER_DEPENDENCY_PKG alias which refers to either conan-provided or system libraries.
+-	if(DISABLE_CONAN)
++	if(EMSCRIPTEN)
++		# WebAssembly: header-only deps vendored in wasm-deps/include.
++		foreach(dep nlohmann_json spdlog)
++			add_library(AER_DEPENDENCY_PKG::${dep} INTERFACE IMPORTED)
++			set_target_properties(AER_DEPENDENCY_PKG::${dep} PROPERTIES
++				INTERFACE_INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/wasm-deps/include")
++		endforeach()
++	elseif(DISABLE_CONAN)
+ 		_use_system_libraries()
+ 	else()
+ 		include(conan_utils)
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -225,7 +225,9 @@
+ 	set(BLA_STATIC TRUE)
+ endif()
+ 
+-if(AER_BLAS_LIB_PATH)
++if(EMSCRIPTEN)
++	set(BLAS_LIBRARIES "${PROJECT_SOURCE_DIR}/wasm-deps/lib/libopenblas.so")
++elseif(AER_BLAS_LIB_PATH)
+ 	find_BLAS_in_specific_path(${AER_BLAS_LIB_PATH})
+ else()
+ 	if(APPLE)
+@@ -261,7 +263,7 @@
+ 
+ message(STATUS "BLAS library found: ${BLAS_LIBRARIES}")
+ 
+-if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64" OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "amd64")
++if(NOT EMSCRIPTEN AND (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64" OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "amd64"))
+     if(APPLE OR UNIX)
+         if (NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+             set(SIMD_FLAGS_LIST "-mfma;-mavx2")
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -1,7 +1,6 @@
+ [build-system]
+ requires = [
+   "setuptools",
+-  "conan<2.0.0",
+   "scikit-build>=0.11.0",
+   "cmake!=3.17.1,!=3.17.0",
+   "ninja",
+--- a/qiskit_aer/backends/backend_utils.py
++++ b/qiskit_aer/backends/backend_utils.py
+@@ -19,7 +19,10 @@
+ 
+ from types import SimpleNamespace
+ 
+-import psutil
++try:
++    import psutil
++except ImportError:  # e.g. Pyodide/WebAssembly
++    psutil = None
+ from qiskit.circuit import QuantumCircuit
+ from qiskit.result import ProbDistribution
+ from qiskit.quantum_info import Clifford
+@@ -30,7 +33,8 @@
+ from .controller_wrappers import aer_initialize_libraries
+ 
+ # Available system memory
+-SYSTEM_MEMORY_GB = psutil.virtual_memory().total / (1024**3)
++# WebAssembly memory is capped at 4 GiB.
++SYSTEM_MEMORY_GB = psutil.virtual_memory().total / (1024**3) if psutil else 4
+ 
+ # Max number of qubits for complex double statevector
+ # given available system memory
+--- a/qiskit_aer/backends/wrappers/CMakeLists.txt
++++ b/qiskit_aer/backends/wrappers/CMakeLists.txt
+@@ -12,7 +12,7 @@
+ 	${THRUST_DEPENDANT_LIBS}
+ 	${MPI_DEPENDANT_LIBS})
+ 
+-if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64" OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "amd64")
++if(NOT EMSCRIPTEN AND (CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64" OR CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "amd64"))
+     if (NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+       # We build SIMD filed separately, because they will be reached only if the
+       # machine running the code has SIMD support
+--- a/qiskit_aer/jobs/utils.py
++++ b/qiskit_aer/jobs/utils.py
+@@ -12,11 +12,32 @@
+ 
+ """Utility functions for Aer job management."""
+ from functools import singledispatch, update_wrapper, wraps
+-from concurrent.futures import ThreadPoolExecutor
++import sys
++from concurrent.futures import Executor, Future, ThreadPoolExecutor
+ 
+ from qiskit.providers import JobError
+ 
+-DEFAULT_EXECUTOR = ThreadPoolExecutor(max_workers=1)
++
++class _SynchronousExecutor(Executor):
++    """Runs each job immediately on the calling thread.
++
++    Used under WebAssembly (Pyodide), where threads cannot be started. Returns
++    an already-completed Future, so AerJob behaves the same to its callers.
++    """
++
++    def submit(self, fn, /, *args, **kwargs):
++        future = Future()
++        try:
++            future.set_result(fn(*args, **kwargs))
++        except Exception as exc:  # pylint: disable=broad-except
++            future.set_exception(exc)
++        return future
++
++
++if sys.platform == "emscripten":
++    DEFAULT_EXECUTOR = _SynchronousExecutor()
++else:
++    DEFAULT_EXECUTOR = ThreadPoolExecutor(max_workers=1)
+ 
+ 
+ def requires_submit(func):
+--- a/setup.py
++++ b/setup.py
+@@ -23,7 +23,6 @@
+     "qiskit>=1.1.0",
+     "numpy>=1.16.3",
+     "scipy>=1.0",
+-    "psutil>=5",
+     "python-dateutil>=2.8.0",
+ ]
+ 
+--- a/src/framework/blas_protos.hpp
++++ b/src/framework/blas_protos.hpp
+@@ -24,6 +24,16 @@
+ #include <iostream>
+ #include <vector>
+ 
++// Pyodide's OpenBLAS (f2c-style) returns int from BLAS/LAPACK routines.
++// WebAssembly checks call signatures exactly, so the declarations must match.
++#ifndef AER_F77_RET
++#ifdef __EMSCRIPTEN__
++#define AER_F77_RET int
++#else
++#define AER_F77_RET void
++#endif
++#endif
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+@@ -33,46 +43,46 @@
+ //===========================================================================
+ 
+ // Single-Precison Real Matrix-Vector Multiplcation
+-void sgemv_(const char *TransA, const size_t *M, const size_t *N,
++AER_F77_RET sgemv_(const char *TransA, const size_t *M, const size_t *N,
+             const float *alpha, const float *A, const size_t *lda,
+             const float *x, const size_t *incx, const float *beta, float *y,
+             const size_t *lincy);
+ // Double-Precison Real Matrix-Vector Multiplcation
+-void dgemv_(const char *TransA, const size_t *M, const size_t *N,
++AER_F77_RET dgemv_(const char *TransA, const size_t *M, const size_t *N,
+             const double *alpha, const double *A, const size_t *lda,
+             const double *x, const size_t *incx, const double *beta, double *y,
+             const size_t *lincy);
+ // Single-Precison Complex Matrix-Vector Multiplcation
+-void cgemv_(const char *TransA, const size_t *M, const size_t *N,
++AER_F77_RET cgemv_(const char *TransA, const size_t *M, const size_t *N,
+             const std::complex<float> *alpha, const std::complex<float> *A,
+             const size_t *lda, const std::complex<float> *x, const size_t *incx,
+             const std::complex<float> *beta, std::complex<float> *y,
+             const size_t *lincy);
+ // Double-Precison Real Matrix-Vector Multiplcation
+-void zgemv_(const char *TransA, const size_t *M, const size_t *N,
++AER_F77_RET zgemv_(const char *TransA, const size_t *M, const size_t *N,
+             const std::complex<double> *alpha, const std::complex<double> *A,
+             const size_t *lda, const std::complex<double> *x,
+             const size_t *incx, const std::complex<double> *beta,
+             std::complex<double> *y, const size_t *lincy);
+ // Single-Precison Real Matrix-Matrix Multiplcation
+-void sgemm_(const char *TransA, const char *TransB, const size_t *M,
++AER_F77_RET sgemm_(const char *TransA, const char *TransB, const size_t *M,
+             const size_t *N, const size_t *K, const float *alpha,
+             const float *A, const size_t *lda, const float *B,
+             const size_t *lba, const float *beta, float *C, size_t *ldc);
+ // Double-Precison Real Matrix-Matrix Multiplcation
+-void dgemm_(const char *TransA, const char *TransB, const size_t *M,
++AER_F77_RET dgemm_(const char *TransA, const char *TransB, const size_t *M,
+             const size_t *N, const size_t *K, const double *alpha,
+             const double *A, const size_t *lda, const double *B,
+             const size_t *lba, const double *beta, double *C, size_t *ldc);
+ // Single-Precison Complex Matrix-Matrix Multiplcation
+-void cgemm_(const char *TransA, const char *TransB, const size_t *M,
++AER_F77_RET cgemm_(const char *TransA, const char *TransB, const size_t *M,
+             const size_t *N, const size_t *K, const std::complex<float> *alpha,
+             const std::complex<float> *A, const size_t *lda,
+             const std::complex<float> *B, const size_t *ldb,
+             const std::complex<float> *beta, std::complex<float> *C,
+             size_t *ldc);
+ // Double-Precison Complex Matrix-Matrix Multiplcation
+-void zgemm_(const char *TransA, const char *TransB, const size_t *M,
++AER_F77_RET zgemm_(const char *TransA, const char *TransB, const size_t *M,
+             const size_t *N, const size_t *K, const std::complex<double> *alpha,
+             const std::complex<double> *A, const size_t *lda,
+             const std::complex<double> *B, const size_t *ldb,
+@@ -81,29 +91,29 @@
+ 
+ // Reduces a Single-Precison Complex Hermitian matrix A to real symmetric
+ // tridiagonal form
+-void chetrd_(char *TRANS, int *N, std::complex<float> *A, int *LDA, float *d,
++AER_F77_RET chetrd_(char *TRANS, int *N, std::complex<float> *A, int *LDA, float *d,
+              float *e, std::complex<float> *tau, std::complex<float> *work,
+              int *lwork, int *info);
+ 
+ // Reduces a Double-Precison Complex Hermitian matrix A to real symmetric
+ // tridiagonal form T
+-void zhetrd_(char *TRANS, int *N, std::complex<double> *A, int *LDA, double *d,
++AER_F77_RET zhetrd_(char *TRANS, int *N, std::complex<double> *A, int *LDA, double *d,
+              double *e, std::complex<double> *tau, std::complex<double> *work,
+              int *lwork, int *info);
+ 
+ // Computes all eigenvalues and, optionally, eigenvectors of a
+ // Single-Precison Complex symmetric positive definite tridiagonal matrix
+-void cpteqr_(char *compz, int *n, float *d, float *e, std::complex<float> *z,
++AER_F77_RET cpteqr_(char *compz, int *n, float *d, float *e, std::complex<float> *z,
+              int *ldz, std::complex<float> *work, int *info);
+ 
+ // Computes all eigenvalues and, optionally, eigenvectors of a
+ // Double-Precison Complex symmetric positive definite tridiagonal matrix
+-void zpteqr_(char *compz, int *n, double *d, double *e, std::complex<double> *z,
++AER_F77_RET zpteqr_(char *compz, int *n, double *d, double *e, std::complex<double> *z,
+              int *ldz, std::complex<double> *work, int *info);
+ 
+ // Computes selected eigenvalues and, optionally, eigenvectors
+ // of a Single-Precison Complex Hermitian matrix A
+-void cheevx_(char *jobz, char *range, char *uplo, int *n,
++AER_F77_RET cheevx_(char *jobz, char *range, char *uplo, int *n,
+              std::complex<float> *a, int *lda, float *vl, float *vu, int *il,
+              int *iu, float *abstol, int *m, float *w, std::complex<float> *z,
+              int *ldz, std::complex<float> *work, int *lwork, float *rwork,
+@@ -111,7 +121,7 @@
+ 
+ // Computes selected eigenvalues and, optionally, eigenvectors
+ // of a Double-Precison Complex Hermitian matrix A
+-void zheevx_(char *jobz, char *range, char *uplo, int *n,
++AER_F77_RET zheevx_(char *jobz, char *range, char *uplo, int *n,
+              std::complex<double> *a, int *lda, double *vl, double *vu, int *il,
+              int *iu, double *abstol, int *m, double *w,
+              std::complex<double> *z, int *ldz, std::complex<double> *work,
+--- a/src/framework/lapack_protos.hpp
++++ b/src/framework/lapack_protos.hpp
+@@ -8,13 +8,23 @@
+ #include <iostream>
+ #include <vector>
+ 
++// Pyodide's OpenBLAS (f2c-style) returns int from BLAS/LAPACK routines.
++// WebAssembly checks call signatures exactly, so the declarations must match.
++#ifndef AER_F77_RET
++#ifdef __EMSCRIPTEN__
++#define AER_F77_RET int
++#else
++#define AER_F77_RET void
++#endif
++#endif
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+ 
+ // LAPACK SVD function
+ // https://netlib.org/lapack/explore-html/d3/da8/group__complex16_g_esing_gad6f0c85f3cca2968e1ef901d2b6014ee.html
+-void zgesvd_(const char *jobu, const char *jobvt, const size_t *m,
++AER_F77_RET zgesvd_(const char *jobu, const char *jobvt, const size_t *m,
+              const size_t *n, std::complex<double> *a, const size_t *lda,
+              double *s, std::complex<double> *u, const size_t *ldu,
+              std::complex<double> *vt, const size_t *ldvt,
+@@ -23,7 +33,7 @@
+ 
+ // D&C approach
+ // https://netlib.org/lapack/explore-html/d3/da8/group__complex16_g_esing_gaccb06ed106ce18814ad7069dcb43aa27.html
+-void zgesdd_(const char *jobz, const size_t *m, const size_t *n,
++AER_F77_RET zgesdd_(const char *jobz, const size_t *m, const size_t *n,
+              std::complex<double> *a, const size_t *lda, double *s,
+              std::complex<double> *u, const size_t *ldu,
+              std::complex<double> *vt, const size_t *ldvt,
+--- a/src/framework/utils.hpp
++++ b/src/framework/utils.hpp
+@@ -1272,7 +1272,11 @@
+ size_t get_system_memory_mb();
+ size_t get_system_memory_mb() {
+   size_t total_physical_memory = 0;
+-#if defined(__linux__)
++#if defined(__EMSCRIPTEN__)
++  // wasm32 linear memory is capped at 4 GiB. size_t is 32-bit here, so
++  // return megabytes directly instead of shifting a byte count.
++  return 4096;
++#elif defined(__linux__)
+   size_t pages = (size_t)sysconf(_SC_PHYS_PAGES);
+   size_t page_size = (size_t)sysconf(_SC_PAGE_SIZE);
+   total_physical_memory = pages * page_size;
+--- /dev/null
++++ b/wasm-deps/include/omp.h
+@@ -0,0 +1,28 @@
++/* Single-threaded OpenMP runtime stub for WebAssembly builds of qiskit-aer.
++ * Emscripten has no OpenMP; without -fopenmp every `#pragma omp` is ignored,
++ * but some Aer headers still call the runtime API directly. */
++#ifndef AER_WASM_OMP_STUB_H
++#define AER_WASM_OMP_STUB_H
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++static inline int omp_get_num_threads(void) { return 1; }
++static inline int omp_get_max_threads(void) { return 1; }
++static inline int omp_get_thread_num(void) { return 0; }
++static inline int omp_get_num_procs(void) { return 1; }
++static inline int omp_in_parallel(void) { return 0; }
++static inline int omp_get_nested(void) { return 0; }
++static inline int omp_get_max_active_levels(void) { return 1; }
++static inline int omp_get_level(void) { return 0; }
++static inline void omp_set_num_threads(int n) { (void)n; }
++static inline void omp_set_nested(int n) { (void)n; }
++static inline void omp_set_dynamic(int n) { (void)n; }
++static inline void omp_set_max_active_levels(int n) { (void)n; }
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif

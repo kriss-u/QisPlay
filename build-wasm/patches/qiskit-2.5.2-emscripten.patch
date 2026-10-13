@@ -1,0 +1,490 @@
+Build qiskit 2.5.2 for WebAssembly (Pyodide 314, wasm32-unknown-emscripten).
+
+- crossterm (terminal size for the text drawer) pulls in mio, which has no wasm
+  backend: make it a non-emscripten dependency and assume 80 columns.
+- faer's default "rayon" feature pulls in spindle -> atomic-wait, which has no
+  emscripten backend: build faer without rayon (Cargo.lock updated to match).
+- PrimitiveJob and parallel_map: threads and processes cannot be started under
+  Pyodide, so run primitives synchronously and never use process parallelism.
+
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -125,16 +125,6 @@
+ checksum = "3d62b7694a562cdf5a74227903507c56ab2cc8bdd1f781ed5cb4cf9c9f810bfc"
+ 
+ [[package]]
+-name = "atomic-wait"
+-version = "1.1.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "a55b94919229f2c42292fd71ffa4b75e83193bffdd77b1e858cd55fd2d0b0ea8"
+-dependencies = [
+- "libc",
+- "windows-sys 0.42.0",
+-]
+-
+-[[package]]
+ name = "autocfg"
+ version = "1.5.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -391,28 +381,6 @@
+ ]
+ 
+ [[package]]
+-name = "crossbeam"
+-version = "0.8.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "1137cd7e7fc0fb5d3c5a8678be38ec56e819125d8d7907411fe24ccb943faca8"
+-dependencies = [
+- "crossbeam-channel",
+- "crossbeam-deque",
+- "crossbeam-epoch",
+- "crossbeam-queue",
+- "crossbeam-utils",
+-]
+-
+-[[package]]
+-name = "crossbeam-channel"
+-version = "0.5.15"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
+-dependencies = [
+- "crossbeam-utils",
+-]
+-
+-[[package]]
+ name = "crossbeam-deque"
+ version = "0.8.6"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -432,15 +400,6 @@
+ ]
+ 
+ [[package]]
+-name = "crossbeam-queue"
+-version = "0.3.12"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0f58bbc28f91df819d0aa2a2c00cd19754769c2fad90579b3592b1c9ba7a3115"
+-dependencies = [
+- "crossbeam-utils",
+-]
+-
+-[[package]]
+ name = "crossbeam-utils"
+ version = "0.8.21"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -690,15 +649,6 @@
+ 
+ [[package]]
+ name = "equator"
+-version = "0.4.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4711b213838dfee0117e3be6ac926007d7f433d7bbe33595975d4190cb07e6fc"
+-dependencies = [
+- "equator-macro 0.4.2",
+-]
+-
+-[[package]]
+-name = "equator"
+ version = "0.6.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "02da895aab06bbebefb6b2595f6d637b18c9ff629b4cd840965bb3164e4194b0"
+@@ -719,17 +669,6 @@
+ 
+ [[package]]
+ name = "equator-macro"
+-version = "0.4.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "44f23cf4b44bfce11a86ace86f8a73ffdec849c9fd00a386a53d278bd9e81fb3"
+-dependencies = [
+- "proc-macro2",
+- "quote",
+- "syn 2.0.118",
+-]
+-
+-[[package]]
+-name = "equator-macro"
+ version = "0.6.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "2b14b339eb76d07f052cdbad76ca7c1310e56173a138095d3bf42a23c06ef5d8"
+@@ -764,16 +703,13 @@
+  "generativity",
+  "libm",
+  "nano-gemm",
+- "npyz 0.8.4",
+  "num-complex",
+  "num-traits",
+  "private-gemm-x86",
+  "pulp",
+  "rand 0.9.4",
+  "rand_distr 0.5.1",
+- "rayon",
+  "reborrow",
+- "spindle",
+ ]
+ 
+ [[package]]
+@@ -919,7 +855,6 @@
+  "paste",
+  "pulp",
+  "raw-cpuid",
+- "rayon",
+  "seq-macro",
+  "sysctl",
+ ]
+@@ -938,7 +873,6 @@
+  "num-traits",
+  "paste",
+  "raw-cpuid",
+- "rayon",
+  "seq-macro",
+ ]
+ 
+@@ -979,21 +913,6 @@
+ checksum = "d2c81fb5260e37854d09d5c87183309fd8c555b75289427884b25660bc87a85e"
+ 
+ [[package]]
+-name = "generator"
+-version = "0.8.9"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b3b854b0e584ead1a33f18b2fcad7cf7be18b3875c78816b753639aa501513ae"
+-dependencies = [
+- "cc",
+- "cfg-if",
+- "libc",
+- "log",
+- "rustversion",
+- "windows-link",
+- "windows-result",
+-]
+-
+-[[package]]
+ name = "generic-array"
+ version = "0.14.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -1434,28 +1353,6 @@
+ checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
+ 
+ [[package]]
+-name = "loom"
+-version = "0.7.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "419e0dc8046cb947daa77eb95ae174acfbddb7673b4151f56d1eed8e93fbfaca"
+-dependencies = [
+- "cfg-if",
+- "generator",
+- "scoped-tls",
+- "tracing",
+- "tracing-subscriber",
+-]
+-
+-[[package]]
+-name = "matchers"
+-version = "0.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+-dependencies = [
+- "regex-automata",
+-]
+-
+-[[package]]
+ name = "matrixmultiply"
+ version = "0.3.10"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -1675,17 +1572,6 @@
+ 
+ [[package]]
+ name = "npyz"
+-version = "0.8.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9f0e759e014e630f90af745101b614f761306ddc541681e546649068e25ec1b9"
+-dependencies = [
+- "byteorder",
+- "num-bigint",
+- "py_literal",
+-]
+-
+-[[package]]
+-name = "npyz"
+ version = "0.9.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "0a01a88a1d2f89d362475ad16f34de3994f7c86b12259236f5d33537b040bcd4"
+@@ -1697,15 +1583,6 @@
+ ]
+ 
+ [[package]]
+-name = "nu-ansi-term"
+-version = "0.50.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+-dependencies = [
+- "windows-sys 0.61.2",
+-]
+-
+-[[package]]
+ name = "num"
+ version = "0.4.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -2053,14 +1930,10 @@
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "0af8c3e5087969c323f667ccb4b789fa0954f5aa650550e38e81cf9108be21b5"
+ dependencies = [
+- "crossbeam",
+  "defer",
+  "interpol",
+  "num_cpus",
+  "raw-cpuid",
+- "rayon",
+- "spindle",
+- "sysctl",
+ ]
+ 
+ [[package]]
+@@ -2427,7 +2300,7 @@
+  "bytemuck",
+  "hashbrown 0.15.5",
+  "ndarray",
+- "npyz 0.9.1",
++ "npyz",
+  "num-bigint",
+  "num-complex",
+  "num-traits",
+@@ -2899,12 +2772,6 @@
+ ]
+ 
+ [[package]]
+-name = "scoped-tls"
+-version = "1.0.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
+-
+-[[package]]
+ name = "scopeguard"
+ version = "1.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -2986,15 +2853,6 @@
+ ]
+ 
+ [[package]]
+-name = "sharded-slab"
+-version = "0.1.7"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+-dependencies = [
+- "lazy_static",
+-]
+-
+-[[package]]
+ name = "shlex"
+ version = "2.0.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -3066,19 +2924,6 @@
+ ]
+ 
+ [[package]]
+-name = "spindle"
+-version = "0.2.6"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "673aaca3d8aa5387a6eba861fbf984af5348d9df5d940c25c6366b19556fdf64"
+-dependencies = [
+- "atomic-wait",
+- "crossbeam",
+- "equator 0.4.2",
+- "loom",
+- "rayon",
+-]
+-
+-[[package]]
+ name = "stable_deref_trait"
+ version = "1.2.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -3246,55 +3091,6 @@
+ checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
+ 
+ [[package]]
+-name = "tracing"
+-version = "0.1.44"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
+-dependencies = [
+- "pin-project-lite",
+- "tracing-core",
+-]
+-
+-[[package]]
+-name = "tracing-core"
+-version = "0.1.36"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
+-dependencies = [
+- "once_cell",
+- "valuable",
+-]
+-
+-[[package]]
+-name = "tracing-log"
+-version = "0.2.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+-dependencies = [
+- "log",
+- "once_cell",
+- "tracing-core",
+-]
+-
+-[[package]]
+-name = "tracing-subscriber"
+-version = "0.3.23"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
+-dependencies = [
+- "matchers",
+- "nu-ansi-term",
+- "once_cell",
+- "regex-automata",
+- "sharded-slab",
+- "smallvec",
+- "thread_local",
+- "tracing",
+- "tracing-core",
+- "tracing-log",
+-]
+-
+-[[package]]
+ name = "triomphe"
+ version = "0.1.11"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -3367,12 +3163,6 @@
+ ]
+ 
+ [[package]]
+-name = "valuable"
+-version = "0.1.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
+-
+-[[package]]
+ name = "version_check"
+ version = "0.9.5"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+@@ -3496,30 +3286,6 @@
+ checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+ 
+ [[package]]
+-name = "windows-result"
+-version = "0.4.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
+-dependencies = [
+- "windows-link",
+-]
+-
+-[[package]]
+-name = "windows-sys"
+-version = "0.42.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5a3e1820f08b8513f676f7ab6c1f99ff312fb97b553d30ff4dd86f9f15728aa7"
+-dependencies = [
+- "windows_aarch64_gnullvm",
+- "windows_aarch64_msvc",
+- "windows_i686_gnu",
+- "windows_i686_msvc",
+- "windows_x86_64_gnu",
+- "windows_x86_64_gnullvm",
+- "windows_x86_64_msvc",
+-]
+-
+-[[package]]
+ name = "windows-sys"
+ version = "0.45.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -21,7 +21,8 @@
+ num-bigint = "0.4"
+ num-complex = "0.4"
+ nalgebra = "0.34"
+-faer = "0.24"
++# No rayon: its spindle thread pool needs atomic-wait, which lacks an emscripten backend.
++faer = { version = "0.24", default-features = false, features = ["std", "sparse-linalg", "rand"] }
+ numpy = "0.29"
+ ndarray = "0.16"
+ smallvec = "1.15"
+--- a/crates/circuit/Cargo.toml
++++ b/crates/circuit/Cargo.toml
+@@ -30,13 +30,16 @@
+ nom.workspace = true
+ nom-unicode.workspace = true
+ nom-language.workspace = true
+-crossterm = "0.29.0"
+ unicode-width = "0.2"
+ ahash = "0.8.12"
+ unicode-segmentation = "1.13"
+ lexical-core = "1.0.6"
+ lexical-write-float = "1.0.6"
+ 
++# crossterm's event loop depends on mio, which does not support WebAssembly.
++[target.'cfg(not(target_os = "emscripten"))'.dependencies]
++crossterm = "0.29.0"
++
+ [dependencies.pyo3]
+ workspace = true
+ features = ["hashbrown", "indexmap", "num-complex", "num-bigint", "smallvec", "py-clone"]
+--- a/crates/circuit/src/circuit_drawer.rs
++++ b/crates/circuit/src/circuit_drawer.rs
+@@ -16,6 +16,7 @@
+ use crate::packed_instruction::PackedInstruction;
+ use crate::{Clbit, Qubit};
+ use approx;
++#[cfg(not(target_os = "emscripten"))]
+ use crossterm::terminal;
+ use hashbrown::HashSet;
+ use itertools::{Itertools, MinMaxResult};
+@@ -53,6 +54,10 @@
+     let fold = match fold {
+         Some(f) => f,
+         None => {
++            // There is no terminal to query under WebAssembly.
++            #[cfg(target_os = "emscripten")]
++            let term_width: u16 = 80;
++            #[cfg(not(target_os = "emscripten"))]
+             let (term_width, _) = terminal::size().unwrap_or((80, 24));
+             term_width as usize
+         }
+--- a/qiskit/primitives/primitive_job.py
++++ b/qiskit/primitives/primitive_job.py
+@@ -14,7 +14,8 @@
+ """
+ 
+ import uuid
+-from concurrent.futures import ThreadPoolExecutor
++import sys
++from concurrent.futures import Future, ThreadPoolExecutor
+ 
+ from qiskit.providers import JobError, JobStatus
+ from qiskit.providers.jobstatus import JOB_FINAL_STATES
+@@ -51,6 +52,14 @@
+         if self._future is not None:
+             raise JobError("Primitive job has been submitted already.")
+ 
++        if sys.platform == "emscripten":
++            # WebAssembly (Pyodide) cannot start threads: run now, on this thread.
++            self._future = Future()
++            try:
++                self._future.set_result(self._function(*self._args, **self._kwargs))
++            except Exception as exc:  # pylint: disable=broad-except
++                self._future.set_exception(exc)
++            return
+         executor = ThreadPoolExecutor(max_workers=1)
+         self._future = executor.submit(self._function, *self._args, **self._kwargs)
+         executor.shutdown(wait=False)
+--- a/qiskit/utils/parallel.py
++++ b/qiskit/utils/parallel.py
+@@ -199,6 +199,9 @@
+     """
+     # It's a configuration function with many simple choices - it'd be less clean to return late.
+ 
++    if sys.platform == "emscripten":
++        # WebAssembly (Pyodide) cannot spawn processes.
++        return False
+     num_processes = default_num_processes() if num_processes is None else num_processes
+     if num_processes < 2:
+         # There's no resources to parallelise over.

@@ -1,0 +1,17 @@
+# Cloudflare Pages response headers.
+# Cross-origin isolation (COOP + COEP) enables SharedArrayBuffer, which the Stop
+# button uses to interrupt running Python. Everything the page loads must be
+# same-origin or CORS/CORP-enabled (the jsDelivr package CDN is).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Vite's hashed bundles never change.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Always revalidate the service worker so updates roll out promptly.
+/sw.js
+  Cache-Control: no-cache

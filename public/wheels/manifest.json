@@ -1,0 +1,6 @@
+{
+  "wheels": [
+    "qiskit-2.5.2-cp310-abi3-pyemscripten_2026_0_wasm32.whl",
+    "qiskit_aer-0.17.2-cp314-cp314-pyemscripten_2026_0_wasm32.whl"
+  ]
+}
