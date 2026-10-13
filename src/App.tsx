@@ -2,6 +2,9 @@ import {
   Badge,
   Box,
   Button,
+  Code,
+  Dialog,
+  Drawer,
   Flex,
   HStack,
   IconButton,
@@ -14,9 +17,21 @@ import {
   Tabs,
   Text,
   Wrap,
+  useBreakpointValue,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LuChevronDown, LuChevronUp, LuCircleHelp, LuMonitor, LuMoon, LuPackage, LuPlay, LuSquare, LuSun } from "react-icons/lu";
+import {
+  LuDownload,
+  LuCircleHelp,
+  LuEllipsisVertical,
+  LuMenu,
+  LuMonitor,
+  LuMoon,
+  LuPackage,
+  LuPlay,
+  LuSquare,
+  LuSun,
+} from "react-icons/lu";
 import { APP_NAME } from "./app/brand";
 import { useColorMode, type ColorModeSetting } from "./app/colorMode";
 import { formatKeys, matches, PALETTE_KEYS } from "./app/shortcuts";
@@ -40,6 +55,8 @@ import { writeFile } from "./workspace/workspace";
 
 const STATE_COLOR = { loading: "yellow", ready: "green", running: "blue", error: "red" } as const;
 const DEFAULT_SIZES = [18, 46, 36];
+/** Editor/output split when the explorer is a drawer (tablet: side by side, phone: stacked). */
+const COMPACT_SIZES = [58, 42];
 const THEME_ICONS: Record<ColorModeSetting, React.ReactNode> = {
   light: <LuSun />,
   dark: <LuMoon />,
@@ -62,10 +79,15 @@ export default function App() {
   const py = usePython(sink);
   const [panelTab, setPanelTab] = useState("output");
   const [sizes, setSizes] = useState(DEFAULT_SIZES);
+  const [compactSizes, setCompactSizes] = useState(COMPACT_SIZES);
+  // Below lg the explorer becomes a drawer; below md the editor and output stack vertically.
+  const compact = useBreakpointValue({ base: true, lg: false }, { ssr: false }) ?? false;
+  const stacked = useBreakpointValue({ base: true, md: false }, { ssr: false }) ?? false;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showPackages, setShowPackages] = useState(false);
   const lastSizes = useRef(DEFAULT_SIZES);
   const [palette, setPalette] = useState<"files" | "commands" | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const [figuresOpen, setFiguresOpen] = useState(true);
 
   const entry = ws.active && isPython(ws.active) ? ws.active : null;
   const canRun = py.state === "ready" && entry !== null;
@@ -103,6 +125,7 @@ export default function App() {
 
   const showPanel = useCallback(() => {
     setSizes((s) => (s[2] > 0 ? s : [s[0], Math.max(25, s[1] - (lastSizes.current[2] || 36)), lastSizes.current[2] || 36]));
+    setCompactSizes((s) => (s[1] > 0 ? s : COMPACT_SIZES));
   }, []);
 
   const onRun = useCallback(async () => {
@@ -117,6 +140,8 @@ export default function App() {
     output.current?.clear();
     output.current?.write(`$ python ${entry}\n`, "info");
     const result = await py.run(entry, snapshot());
+    // Show the plots after a successful run; on failure stay on the traceback.
+    if (result?.ok && result.figures > 0) setPanelTab("figures");
     await keepChangedFiles(result, (m) => output.current?.write(m, "info"));
   }, [ws, py, entry, snapshot, keepChangedFiles, showPanel]);
 
@@ -139,7 +164,19 @@ export default function App() {
     [py.state, showPanel],
   );
 
+  /** Clears whichever panel tab is showing. */
+  const clearPanel = () => {
+    if (panelTab === "console") console_.current?.clear();
+    else if (panelTab === "figures") py.setFigures([]);
+    else output.current?.clear();
+  };
+
   const toggle = useCallback((index: 0 | 2) => {
+    if (compact) {
+      if (index === 0) setDrawerOpen((o) => !o);
+      else setCompactSizes((s) => (s[1] > 0 ? [100, 0] : COMPACT_SIZES));
+      return;
+    }
     setSizes((s) => {
       const next = [...s];
       if (s[index] > 0) {
@@ -153,7 +190,7 @@ export default function App() {
       }
       return next;
     });
-  }, []);
+  }, [compact]);
 
   const cycleTab = useCallback(
     (dir: 1 | -1) => {
@@ -217,15 +254,9 @@ export default function App() {
     },
     {
       id: "clear",
-      title: "Clear output / console",
+      title: "Clear output / console / figures",
       keys: "Mod+l",
-      run: () => {
-        if (panelTab === "console") console_.current?.clear();
-        else {
-          output.current?.clear();
-          py.setFigures([]);
-        }
-      },
+      run: clearPanel,
     },
     { id: "zip", title: "Download project as .zip", run: () => void exportProject(ws) },
     { id: "import", title: "Open project from .zip…", run: () => void importProject(ws) },
@@ -259,12 +290,115 @@ export default function App() {
     document.title = ws.project ? `${ws.project.name} — ${APP_NAME}` : APP_NAME;
   }, [ws.project]);
 
+  const busy = py.state === "loading" || py.state === "running";
+  const packagesList = (
+    <>
+        <Text fontSize="sm" mb="2" color="fg.muted">
+          Available in this runtime (no other packages can be installed):
+        </Text>
+        <Wrap gap="1.5">
+          {Object.entries(py.packages).map(([name, v]) => (
+            <Badge key={name} variant="subtle" fontFamily="mono">
+              {name} {v}
+            </Badge>
+          ))}
+          {py.missing.map((name) => (
+            <Badge key={name} colorPalette="orange" variant="outline" fontFamily="mono">
+              {name} — not installed
+            </Badge>
+          ))}
+        </Wrap>
+    </>
+  );
+
+  const editorPane = (
+    <EditorPane ws={ws} onRun={() => void onRun()} onRunSelection={sendToConsole} complete={py.complete} />
+  );
+  const outputPane = (
+    <Flex direction="column" h="100%" minW="0">
+      <Tabs.Root
+        value={panelTab}
+        onValueChange={(e) => setPanelTab(e.value)}
+        size="sm"
+        variant="line"
+        display="flex"
+        flexDirection="column"
+        flex="1"
+        minH="0"
+      >
+        <Tabs.List h="9" flexShrink={0} bg="bg.subtle" px="2">
+          <Tabs.Trigger value="output">Output</Tabs.Trigger>
+          <Tabs.Trigger value="console">Console</Tabs.Trigger>
+          <Tabs.Trigger value="figures">
+            Figures
+            {py.figures.length > 0 && (
+              <Badge size="xs" variant="solid" colorPalette="blue" ms="1" rounded="full">
+                {py.figures.length}
+              </Badge>
+            )}
+          </Tabs.Trigger>
+          <Button size="2xs" variant="ghost" ms="auto" alignSelf="center" onClick={clearPanel}>
+            Clear
+          </Button>
+        </Tabs.List>
+        {/* Both stay mounted so terminals keep their scrollback. */}
+        <Tabs.Content value="output" flex="1" minH="0" p="0" _hidden={{ display: "none" }}>
+          <OutputTerminal ref={output} label="Program output" />
+        </Tabs.Content>
+        <Tabs.Content value="figures" flex="1" minH="0" p="0" overflow="auto" _hidden={{ display: "none" }}>
+          {py.figures.length === 0 ? (
+            <Text p="4" fontSize="sm" color="fg.muted">
+              Plots from <Code>plt.show()</Code> or <Code>qc.draw("mpl")</Code> appear here.
+            </Text>
+          ) : (
+            <Flex direction="column" gap="3" p="3">
+              {py.figures.map((png, i) => (
+                <Box key={i} position="relative" bg="white" rounded="md" borderWidth="1px" p="2">
+                  <Image src={`data:image/png;base64,${png}`} alt={`Figure ${i + 1}`} maxW="100%" mx="auto" />
+                  <IconButton
+                    asChild
+                    size="2xs"
+                    variant="subtle"
+                    position="absolute"
+                    top="2"
+                    right="2"
+                    aria-label={`Download figure ${i + 1}`}
+                    title="Download PNG"
+                  >
+                    <a href={`data:image/png;base64,${png}`} download={`figure-${i + 1}.png`}>
+                      <LuDownload />
+                    </a>
+                  </IconButton>
+                </Box>
+              ))}
+            </Flex>
+          )}
+        </Tabs.Content>
+        <Tabs.Content value="console" flex="1" minH="0" p="0" _hidden={{ display: "none" }}>
+          <ConsolePanel
+            ref={console_}
+            ready={py.state === "ready" || py.state === "running"}
+            busy={py.state === "running"}
+            execute={runInConsole}
+            isComplete={py.isComplete}
+            onReset={py.resetConsole}
+          />
+        </Tabs.Content>
+      </Tabs.Root>
+    </Flex>
+  );
+
   return (
     <Flex direction="column" h="100dvh" bg="bg" color="fg">
-      <Flex as="header" align="center" gap="3" px="3" py="2" borderBottomWidth="1px" wrap="wrap">
-        <HStack gap="2">
+      <Flex as="header" align="center" gap={{ base: "1.5", md: "3" }} px={{ base: "2", md: "3" }} py="2" borderBottomWidth="1px">
+        {compact && (
+          <IconButton size="sm" variant="ghost" aria-label="Show files" title="Files" onClick={() => setDrawerOpen(true)}>
+            <LuMenu />
+          </IconButton>
+        )}
+        <HStack gap="2" flexShrink={0}>
           <Logo size={26} />
-          <Text fontWeight="bold" fontSize="lg" letterSpacing="tight">
+          <Text fontWeight="bold" fontSize="lg" letterSpacing="tight" hideBelow="md">
             {APP_NAME}
           </Text>
         </HStack>
@@ -278,7 +412,12 @@ export default function App() {
             disabled={!canRun}
             title={entry ? `Run ${entry} (${formatKeys("Mod+Enter")} or F5)` : "Open a .py file to run it"}
           >
-            <LuPlay /> Run{entry ? ` ${entry.split("/").pop()}` : ""}
+            {stacked && busy ? <Spinner size="xs" /> : <LuPlay />} Run
+            {entry && (
+              <Box as="span" hideBelow="md">
+                {entry.split("/").pop()}
+              </Box>
+            )}
           </Button>
           <Button
             size="sm"
@@ -287,12 +426,64 @@ export default function App() {
             onClick={py.stop}
             disabled={py.state !== "running"}
             title={`Stop (${formatKeys("Shift+F5")})`}
+            aria-label="Stop"
           >
-            <LuSquare /> Stop
+            <LuSquare />
+            <Box as="span" hideBelow="md">
+              Stop
+            </Box>
           </Button>
         </HStack>
 
-        <HStack ms="auto" gap="1">
+        {/* Phones: one overflow menu instead of the icon cluster. */}
+        <Menu.Root
+          positioning={{ placement: "bottom-end" }}
+          onSelect={({ value }) => {
+            if (value === "packages") setShowPackages(true);
+            else if (value === "shortcuts") setShowShortcuts(true);
+          }}
+        >
+          <Menu.Trigger asChild>
+            <IconButton size="sm" variant="ghost" ms="auto" hideFrom="md" aria-label="More">
+              <LuEllipsisVertical />
+            </IconButton>
+          </Menu.Trigger>
+          <Portal>
+            <Menu.Positioner>
+              <Menu.Content minW="14rem">
+                <Menu.ItemGroup>
+                  <Menu.ItemGroupLabel>Theme</Menu.ItemGroupLabel>
+                  <Menu.RadioItemGroup
+                    value={themeSetting}
+                    onValueChange={(e) => setColorMode(e.value as ColorModeSetting)}
+                  >
+                    <Menu.RadioItem value="light">
+                      <LuSun /> Light
+                      <Menu.ItemIndicator />
+                    </Menu.RadioItem>
+                    <Menu.RadioItem value="dark">
+                      <LuMoon /> Dark
+                      <Menu.ItemIndicator />
+                    </Menu.RadioItem>
+                    <Menu.RadioItem value="system">
+                      <LuMonitor /> Match system
+                      <Menu.ItemIndicator />
+                    </Menu.RadioItem>
+                  </Menu.RadioItemGroup>
+                </Menu.ItemGroup>
+                <Menu.Separator />
+                <Menu.Item value="packages" disabled={py.state === "loading"}>
+                  <LuPackage /> Installed packages
+                </Menu.Item>
+                <Menu.Item value="shortcuts">
+                  <LuCircleHelp /> Keyboard shortcuts
+                </Menu.Item>
+              </Menu.Content>
+            </Menu.Positioner>
+          </Portal>
+        </Menu.Root>
+
+        <HStack ms="auto" gap="1" hideBelow="md">
           {(py.state === "loading" || py.state === "running") && <Spinner size="xs" me="1" />}
           {py.state === "loading" && (
             <Text fontSize="sm" color="fg.muted" maxW="320px" truncate me="2">
@@ -301,8 +492,11 @@ export default function App() {
           )}
           <Popover.Root positioning={{ placement: "bottom-end" }}>
             <Popover.Trigger asChild>
-              <Button size="xs" variant="ghost" disabled={py.state === "loading"}>
-                <LuPackage /> Packages
+              <Button size="xs" variant="ghost" disabled={py.state === "loading"} aria-label="Packages">
+                <LuPackage />
+                <Box as="span" hideBelow="md">
+                  Packages
+                </Box>
               </Button>
             </Popover.Trigger>
             <Portal>
@@ -310,21 +504,7 @@ export default function App() {
                 <Popover.Content width="sm">
                   <Popover.Arrow />
                   <Popover.Body>
-                    <Text fontSize="sm" mb="2" color="fg.muted">
-                      Available in this runtime (no other packages can be installed):
-                    </Text>
-                    <Wrap gap="1.5">
-                      {Object.entries(py.packages).map(([name, v]) => (
-                        <Badge key={name} variant="subtle" fontFamily="mono">
-                          {name} {v}
-                        </Badge>
-                      ))}
-                      {py.missing.map((name) => (
-                        <Badge key={name} colorPalette="orange" variant="outline" fontFamily="mono">
-                          {name} — not installed
-                        </Badge>
-                      ))}
-                    </Wrap>
+                    {packagesList}
                   </Popover.Body>
                 </Popover.Content>
               </Popover.Positioner>
@@ -363,6 +543,7 @@ export default function App() {
             size="xs"
             variant="ghost"
             aria-label="Keyboard shortcuts"
+            hideBelow="md"
             title={`Keyboard shortcuts · all commands: ${formatKeys(PALETTE_KEYS)}`}
             onClick={() => setShowShortcuts(true)}
           >
@@ -374,101 +555,71 @@ export default function App() {
         </HStack>
       </Flex>
 
-      <Splitter.Root
-        flex="1"
-        minH="0"
-        panels={[
-          { id: "files", minSize: 10, collapsible: true, collapsedSize: 0 },
-          { id: "editor", minSize: 25 },
-          { id: "output", minSize: 18, collapsible: true, collapsedSize: 0 },
-        ]}
-        size={sizes}
-        onResize={(d) => setSizes(d.size)}
-        borderWidth="0"
-      >
-        <Splitter.Panel id="files">
-          <FileExplorer ws={ws} />
-        </Splitter.Panel>
-        <Splitter.ResizeTrigger id="files:editor" aria-label="Resize file explorer" />
-        <Splitter.Panel id="editor">
-          <EditorPane ws={ws} onRun={() => void onRun()} onRunSelection={sendToConsole} complete={py.complete} />
-        </Splitter.Panel>
-        <Splitter.ResizeTrigger id="editor:output" aria-label="Resize output panel" />
-        <Splitter.Panel id="output">
-          <Flex direction="column" h="100%" minW="0">
-            <Tabs.Root
-              value={panelTab}
-              onValueChange={(e) => setPanelTab(e.value)}
-              size="sm"
-              variant="line"
-              display="flex"
-              flexDirection="column"
-              flex="1"
-              minH="0"
-            >
-              <Tabs.List h="9" flexShrink={0} bg="bg.subtle" px="2">
-                <Tabs.Trigger value="output">Output</Tabs.Trigger>
-                <Tabs.Trigger value="console">Console</Tabs.Trigger>
-                <Button
-                  size="2xs"
-                  variant="ghost"
-                  ms="auto"
-                  alignSelf="center"
-                  hidden={panelTab !== "output"}
-                  onClick={() => {
-                    output.current?.clear();
-                    py.setFigures([]);
-                  }}
-                >
-                  Clear
-                </Button>
-              </Tabs.List>
-              {/* Both stay mounted so terminals keep their scrollback. */}
-              <Tabs.Content value="output" flex="1" minH="0" p="0" _hidden={{ display: "none" }}>
-                <OutputTerminal ref={output} label="Program output" />
-              </Tabs.Content>
-              <Tabs.Content value="console" flex="1" minH="0" p="0" _hidden={{ display: "none" }}>
-                <ConsolePanel
-                  ref={console_}
-                  ready={py.state === "ready" || py.state === "running"}
-                  busy={py.state === "running"}
-                  execute={runInConsole}
-                  isComplete={py.isComplete}
-                  onReset={py.resetConsole}
-                />
-              </Tabs.Content>
-            </Tabs.Root>
-            {py.figures.length > 0 && (
-              <Flex direction="column" h={figuresOpen ? "45%" : "auto"} flexShrink={0} borderTopWidth="1px" minH="0">
-                <Flex align="center" h="8" px="3" gap="1" bg="bg.subtle" flexShrink={0}>
-                  <Button
-                    size="2xs"
-                    variant="ghost"
-                    onClick={() => setFiguresOpen((o) => !o)}
-                    aria-expanded={figuresOpen}
-                    aria-controls="figures-panel"
-                  >
-                    {figuresOpen ? <LuChevronDown /> : <LuChevronUp />}
-                    Figures ({py.figures.length})
-                  </Button>
-                  <Button size="2xs" variant="ghost" ms="auto" onClick={() => py.setFigures([])}>
-                    Clear
-                  </Button>
-                </Flex>
-                {figuresOpen && (
-                  <Box id="figures-panel" flex="1" minH="0" overflow="auto" p="3" bg="white">
-                    <Flex gap="3" wrap="wrap">
-                      {py.figures.map((png, i) => (
-                        <Image key={i} src={`data:image/png;base64,${png}`} alt={`Figure ${i + 1}`} maxW="100%" />
-                      ))}
-                    </Flex>
-                  </Box>
-                )}
-              </Flex>
-            )}
-          </Flex>
-        </Splitter.Panel>
-      </Splitter.Root>
+      {compact ? (
+        <Splitter.Root
+          key={stacked ? "stacked" : "side"}
+          flex="1"
+          minH="0"
+          orientation={stacked ? "vertical" : "horizontal"}
+          panels={[
+            { id: "editor", minSize: 15 },
+            { id: "output", minSize: 12, collapsible: true, collapsedSize: 0 },
+          ]}
+          size={compactSizes}
+          onResize={(d) => setCompactSizes(d.size)}
+          borderWidth="0"
+        >
+          {/* Each pane scrolls on its own; drag the divider to resize. */}
+          <Splitter.Panel id="editor" minH="0">
+            {editorPane}
+          </Splitter.Panel>
+          <Splitter.ResizeTrigger id="editor:output" aria-label="Resize editor and output" />
+          <Splitter.Panel id="output" minH="0">
+            {outputPane}
+          </Splitter.Panel>
+        </Splitter.Root>
+      ) : (
+        <Splitter.Root
+          flex="1"
+          minH="0"
+          panels={[
+            { id: "files", minSize: 10, collapsible: true, collapsedSize: 0 },
+            { id: "editor", minSize: 25 },
+            { id: "output", minSize: 18, collapsible: true, collapsedSize: 0 },
+          ]}
+          size={sizes}
+          onResize={(d) => setSizes(d.size)}
+          borderWidth="0"
+        >
+          <Splitter.Panel id="files">
+            <FileExplorer ws={ws} />
+          </Splitter.Panel>
+          <Splitter.ResizeTrigger id="files:editor" aria-label="Resize file explorer" />
+          <Splitter.Panel id="editor">
+            {editorPane}
+          </Splitter.Panel>
+          <Splitter.ResizeTrigger id="editor:output" aria-label="Resize output panel" />
+          <Splitter.Panel id="output">
+            {outputPane}
+          </Splitter.Panel>
+        </Splitter.Root>
+      )}
+
+      {compact && (
+        <Drawer.Root open={drawerOpen} onOpenChange={(e) => setDrawerOpen(e.open)} placement="start" size="xs">
+          <Portal>
+            <Drawer.Backdrop />
+            <Drawer.Positioner>
+              <Drawer.Content>
+                <Drawer.Title srOnly>Files</Drawer.Title>
+                <Drawer.Body p="0" display="flex" flexDirection="column">
+                  <FileExplorer ws={ws} onOpenFile={() => setDrawerOpen(false)} />
+                </Drawer.Body>
+              </Drawer.Content>
+            </Drawer.Positioner>
+          </Portal>
+        </Drawer.Root>
+      )}
 
       <Flex
         as="footer"
@@ -482,7 +633,7 @@ export default function App() {
         color="fg.muted"
         fontSize="xs"
       >
-        <Text truncate>
+        <Text truncate hideBelow="md">
           {py.packages.python ? `Python ${py.packages.python}` : py.status}
           {ws.project ? ` · ${ws.project.name}` : ""}
         </Text>
@@ -503,6 +654,19 @@ export default function App() {
         onOpenFile={ws.openFile}
         onClose={() => setPalette(null)}
       />
+      <Dialog.Root open={showPackages} onOpenChange={(e) => setShowPackages(e.open)} size="sm" placement="center">
+        <Portal>
+          <Dialog.Backdrop />
+          <Dialog.Positioner>
+            <Dialog.Content mx="4">
+              <Dialog.Header>
+                <Dialog.Title>Installed packages</Dialog.Title>
+              </Dialog.Header>
+              <Dialog.Body pb="6">{packagesList}</Dialog.Body>
+            </Dialog.Content>
+          </Dialog.Positioner>
+        </Portal>
+      </Dialog.Root>
       <ShortcutsDialog open={showShortcuts} onClose={() => setShowShortcuts(false)} commands={commands} />
     </Flex>
   );

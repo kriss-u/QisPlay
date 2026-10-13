@@ -32,7 +32,7 @@ function buildTree(files: FileEntry[]): Node[] {
   return roots;
 }
 
-export function FileExplorer({ ws }: { ws: Workspace }) {
+export function FileExplorer({ ws, onOpenFile }: { ws: Workspace; onOpenFile?: () => void }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const tree = useMemo(() => buildTree(ws.files), [ws.files]);
   const toggle = (path: string) =>
@@ -58,14 +58,18 @@ export function FileExplorer({ ws }: { ws: Workspace }) {
           className="group"
           align="center"
           gap="1.5"
-          h="7"
+          h={{ base: "9", md: "7" }}
           ps={`${8 + depth * 14}px`}
           pe="1"
           cursor="pointer"
           fontSize="sm"
           bg={active ? "bg.emphasized" : undefined}
           _hover={{ bg: active ? "bg.emphasized" : "bg.muted" }}
-          onClick={() => (isDir ? toggle(entry.path) : ws.openFile(entry.path))}
+          onClick={() => {
+            if (isDir) return toggle(entry.path);
+            ws.openFile(entry.path);
+            onOpenFile?.(); // e.g. close the mobile drawer
+          }}
           title={entry.path}
         >
           <Box color="fg.muted" flexShrink={0} w="3.5" display="flex">
@@ -89,7 +93,9 @@ export function FileExplorer({ ws }: { ws: Workspace }) {
                 aria-label={`Actions for ${basename(entry.path)}`}
                 size="2xs"
                 variant="ghost"
+                // Visible on hover; always visible on touch screens (no hover there).
                 opacity={active ? 1 : 0}
+                css={{ "@media (hover: none)": { opacity: 1 } }}
                 _groupHover={{ opacity: 1 }}
                 _focusVisible={{ opacity: 1 }}
                 _expanded={{ opacity: 1 }}

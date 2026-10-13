@@ -33,8 +33,15 @@ npm run build:wasm # rebuild the qiskit / qiskit-aer wheels (rarely needed)
   find/replace at the top, and Jedi autocompletion running inside the in-browser
   Python.
 - **Run:** executes the active `.py` file as `__main__` with the whole project
-  importable. Files the script writes are saved back into the project, and
-  matplotlib figures appear in a collapsible pane.
+  importable. Files the script writes are saved back into the project. Plots go to a
+  **Figures** tab (with a count, a PNG download per figure, and an automatic switch
+  after a successful run that drew something).
+- **Responsive:**
+  - **Phones (under 768 px):** the explorer becomes a drawer (☰), the editor and
+    output stack vertically with a draggable divider, and header extras move into a
+    "⋯" menu.
+  - **Tablets (under 1024 px):** the explorer is a drawer, and the editor and output
+    sit side by side.
 - **Console:** a Python REPL with a persistent namespace, multi-line input, history,
   queued input and Restart. **Shift+Enter** in the editor sends the selection (or the
   current line) to it, as in VS Code.

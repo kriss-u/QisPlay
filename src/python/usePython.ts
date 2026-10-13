@@ -14,6 +14,8 @@ export interface RunResult {
   ms: number;
   /** Files the script created or modified. */
   changed: Record<string, string | Uint8Array>;
+  /** Number of figures this run produced. */
+  figures: number;
 }
 
 type Completeness = "complete" | "incomplete" | "invalid";
@@ -31,7 +33,7 @@ export function usePython(sink: OutputSink) {
   const workerRef = useRef<Worker | null>(null);
   const interruptRef = useRef<Uint8Array | null>(null);
   const nextId = useRef(0);
-  const pendingRun = useRef<{ id: number; resolve(r: RunResult | null): void } | null>(null);
+  const pendingRun = useRef<{ id: number; figures: number; resolve(r: RunResult | null): void } | null>(null);
   // Small request/response calls (completions, is-complete) keyed by id.
   const pending = useRef(new Map<number, (value: unknown) => void>());
   const stateRef = useRef(state);
@@ -87,6 +89,7 @@ export function usePython(sink: OutputSink) {
           sinkRef.current.write(msg.text, msg.type, msg.target);
           break;
         case "figure":
+          if (pendingRun.current) pendingRun.current.figures++;
           setFigures((f) => [...f, msg.png]);
           break;
         case "done": {
@@ -101,7 +104,9 @@ export function usePython(sink: OutputSink) {
           pendingRun.current = null;
           setState("ready");
           stateRef.current = "ready";
-          if (run?.id === msg.id) run.resolve({ ok: msg.ok, ms: msg.ms, changed: msg.changed });
+          if (run?.id === msg.id) {
+            run.resolve({ ok: msg.ok, ms: msg.ms, changed: msg.changed, figures: run.figures });
+          }
           break;
         }
         case "completions":
@@ -128,7 +133,7 @@ export function usePython(sink: OutputSink) {
     setState("running");
     stateRef.current = "running";
     return new Promise<RunResult | null>((resolve) => {
-      pendingRun.current = { id: message.id, resolve };
+      pendingRun.current = { id: message.id, figures: 0, resolve };
       worker.postMessage(message satisfies ToWorker);
     });
   }, []);
