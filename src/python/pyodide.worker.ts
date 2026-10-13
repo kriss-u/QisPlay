@@ -44,6 +44,18 @@ const LOCAL_PACKAGES = ["qiskit", "qiskit_aer"];
 
 const REPORTED = ["numpy", "scipy", "matplotlib", "sympy", "rustworkx", ...LOCAL_PACKAGES];
 
+// Installed in the background once Python is ready, so they don't delay
+// startup. A run whose code uses one (`uses`) waits until it's in. `pyodide`
+// ones ship with Pyodide; the rest come from PyPI.
+const BACKGROUND: { name: string; uses: RegExp; pyodide?: boolean }[] = [
+  { name: "qiskit-algorithms", uses: /\bqiskit_algorithms\b/ }, // VQE, QAOA, Grover, optimizers
+  // Only qasm3.load/loads need it; qasm3.dumps and loads_experimental are built in.
+  { name: "qiskit-qasm3-import", uses: /\bqasm3\.loads?\b|\bqiskit_qasm3_import\b/ },
+  { name: "pandas", uses: /\bpandas\b/, pyodide: true },
+];
+const installed = new Set<string>();
+let background: Promise<void> = Promise.resolve();
+
 let py: PyodideInterface | undefined;
 let runner: PyProxy | undefined;
 let interrupt: Uint8Array | undefined;
@@ -118,17 +130,7 @@ import _runner
   runner = py.globals.get("_runner") as PyProxy;
   runner._set_figure_sink((png: string) => post({ type: "figure", png, target }));
 
-  const versions = py.runPython(`
-from importlib.metadata import version, PackageNotFoundError
-def _v(n):
-    try:
-        return version(n)
-    except PackageNotFoundError:
-        return None
-{n: _v(n) for n in ${JSON.stringify(REPORTED)}}
-`);
-  const all = versions.toJs({ dict_converter: Object.fromEntries }) as Record<string, string | null>;
-  versions.destroy();
+  const all = versions(REPORTED);
   const packages: Record<string, string> = {
     python: py.runPython("import sys; sys.version.split()[0]"),
   };
@@ -137,13 +139,92 @@ def _v(n):
     if (v) packages[name] = v;
     else missing.push(name);
   }
-  post({ type: "ready", packages, missing });
+  post({ type: "ready", packages, missing, background: BACKGROUND.map((p) => p.name) });
+  // A failure here is retried when code actually uses the package.
+  background = install(BACKGROUND.map((p) => p.name)).catch(() => {});
 }
 
+/** Installed versions by distribution name (null if missing). */
+function versions(names: string[]): Record<string, string | null> {
+  const result = py!.runPython(`
+from importlib.metadata import version, PackageNotFoundError
+def _v(n):
+    try:
+        return version(n)
+    except PackageNotFoundError:
+        return None
+{n: _v(n) for n in ${JSON.stringify(names)}}
+`);
+  const all = result.toJs({ dict_converter: Object.fromEntries }) as Record<string, string | null>;
+  result.destroy();
+  return all;
+}
+
+/**
+ * Installs quietly and reports the new versions. Pyodide's loader prints
+ * progress to stdout (even with micropip's verbose=False), which would land in
+ * the user's output, so its packages go through loadPackage with messages off.
+ */
+async function install(names: string[]) {
+  const fromPyodide = names.filter((n) => BACKGROUND.some((p) => p.name === n && p.pyodide));
+  const fromPypi = names.filter((n) => !fromPyodide.includes(n));
+  const quiet = { messageCallback: () => {}, errorCallback: () => {} };
+  if (fromPyodide.length) await py!.loadPackage(fromPyodide, quiet);
+  if (fromPypi.length) {
+    const micropip = py!.pyimport("micropip");
+    try {
+      await micropip.install.callKwargs(fromPypi, { verbose: false });
+    } finally {
+      micropip.destroy();
+    }
+  }
+  const found = versions(names);
+  const failed = names.filter((n) => !found[n]);
+  if (failed.length) throw new Error(`not available: ${failed.join(", ")}`);
+  names.forEach((n) => installed.add(n));
+  runner?._invalidate_index(); // so auto-import offers their names
+  post({ type: "installed", packages: found as Record<string, string> });
+}
+
+/** Before running code that uses a background package: wait for it, or retry if that failed. */
+async function installUsed(sources: string[], kind: Target) {
+  const code = sources.join("\n");
+  const used = BACKGROUND.filter((p) => p.uses.test(code)).map((p) => p.name);
+  if (!used.length || used.every((n) => installed.has(n))) return;
+  post({ type: "info", text: `[loading ${used.filter((n) => !installed.has(n)).join(", ")}…]\n`, target: kind });
+  await background;
+  const needed = used.filter((n) => !installed.has(n));
+  if (!needed.length) return;
+  try {
+    await install(needed);
+  } catch (err) {
+    const reason = String(err).trim().split("\n").pop();
+    post({ type: "stderr", text: `Couldn't install ${needed.join(", ")}: ${reason}\n`, target: kind });
+  }
+}
+
+/** Project .py sources, scanned for on-demand imports. */
+const pythonSources = (files: ProjectFiles) =>
+  Object.entries(files.files)
+    .filter(([path, content]) => path.endsWith(".py") && typeof content === "string")
+    .map(([, content]) => content as string);
+
 /** Runs a script or console input; both report the files they changed. */
-function execute(id: number, kind: Target, call: (files: unknown, dirs: unknown) => PyProxy, files: ProjectFiles) {
+function execute(
+  id: number,
+  kind: Target,
+  call: (files: unknown, dirs: unknown) => PyProxy,
+  files: ProjectFiles,
+  columns: number,
+) {
   if (!py || !runner) return;
   if (interrupt) interrupt[0] = 0;
+  // shutil.get_terminal_size() reads COLUMNS; Qiskit's text drawer folds to it.
+  const os = py.pyimport("os");
+  const environ = os.environ;
+  environ.set("COLUMNS", String(columns));
+  environ.destroy();
+  os.destroy();
   target = kind;
   const started = performance.now();
   let ok = false;
@@ -189,9 +270,11 @@ ctx.onmessage = async (event: MessageEvent<ToWorker>) => {
       post({ type: "fatal", error: String(err) });
     }
   } else if (msg.type === "run") {
-    execute(msg.id, "run", (f, d) => runner!._run(msg.entry, f, d), msg.files);
+    await installUsed(pythonSources(msg.files), "run");
+    execute(msg.id, "run", (f, d) => runner!._run(msg.entry, f, d), msg.files, msg.columns);
   } else if (msg.type === "console") {
-    execute(msg.id, "console", (f, d) => runner!._console(msg.source, f, d), msg.files);
+    await installUsed([msg.source, ...pythonSources(msg.files)], "console");
+    execute(msg.id, "console", (f, d) => runner!._console(msg.source, f, d), msg.files, msg.columns);
   } else if (msg.type === "sync") {
     // Keep the project on disk current so autocomplete sees other files' latest code.
     if (py && runner) {

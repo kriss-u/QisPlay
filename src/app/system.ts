@@ -2,10 +2,9 @@
 // chrome around the editor (title bar, sidebar, tabs, status bar) looks like
 // VS Code in both modes.
 import { createSystem, defaultConfig, defineConfig } from "@chakra-ui/react";
-import "@fontsource-variable/jetbrains-mono";
 
-/** Code font: editor, console, terminal and inline code. */
-export const MONO_FONT = '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace';
+/** Code font: editor, console, terminal and inline code (@font-face in index.css). */
+export const MONO_FONT = '"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace';
 
 const c = (light: string, dark: string) => ({ value: { _light: light, _dark: dark } });
 

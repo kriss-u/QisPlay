@@ -17,6 +17,7 @@ export interface ConsoleHandle {
   /** Echo `source` as if typed, then run it. */
   submit(source: string): Promise<void>;
   focus(): void;
+  columns(): number;
 }
 
 interface Props {
@@ -135,6 +136,7 @@ export const ConsolePanel = forwardRef<ConsoleHandle, Props>(function ConsolePan
     clear: () => term.current?.clear(),
     submit: (source) => submitRef.current(source),
     focus: () => input.current?.view?.focus(),
+    columns: () => term.current?.columns() ?? 80,
   }));
 
   const extensions = useMemo(() => {

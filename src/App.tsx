@@ -147,7 +147,8 @@ export default function App() {
     setPanelTab("output");
     output.current?.clear();
     output.current?.write(`$ python ${entry}\n`, "info");
-    const result = await py.run(entry, snapshot());
+    await new Promise(requestAnimationFrame); // let the panel show, so its width is real
+    const result = await py.run(entry, snapshot(), output.current?.columns() ?? 80);
     // Show the plots after a successful run; on failure stay on the traceback.
     if (result?.ok && result.figures > 0) setPanelTab("figures");
     await keepChangedFiles(result, (m) => output.current?.write(m, "info"));
@@ -155,7 +156,7 @@ export default function App() {
 
   const runInConsole = useCallback(
     async (source: string) => {
-      const result = await py.runConsole(source, snapshot());
+      const result = await py.runConsole(source, snapshot(), console_.current?.columns() ?? 80);
       await keepChangedFiles(result, (m) => console_.current?.write(m, "info"));
     },
     [py, snapshot, keepChangedFiles],
@@ -323,12 +324,17 @@ export default function App() {
   const packagesList = (
     <>
         <Text fontSize="sm" mb="2" color="fg.muted">
-          Available in this runtime (no other packages can be installed):
+          Available in this runtime:
         </Text>
         <Wrap gap="1.5">
           {Object.entries(py.packages).map(([name, v]) => (
             <Badge key={name} variant="subtle" fontFamily="mono">
               {name} {v}
+            </Badge>
+          ))}
+          {py.loadingPackages.map((name) => (
+            <Badge key={name} variant="outline" fontFamily="mono">
+              {name} — loading…
             </Badge>
           ))}
           {py.missing.map((name) => (

@@ -20,8 +20,9 @@ export type Target = "run" | "console";
 
 export type ToWorker =
   | { type: "init"; interruptBuffer?: SharedArrayBuffer }
-  | { type: "run"; id: number; entry: string; files: ProjectFiles }
-  | { type: "console"; id: number; source: string; files: ProjectFiles }
+  // columns: the output terminal's width, so text output (e.g. qc.draw()) fits it.
+  | { type: "run"; id: number; entry: string; files: ProjectFiles; columns: number }
+  | { type: "console"; id: number; source: string; files: ProjectFiles; columns: number }
   | { type: "console-reset" }
   | { type: "sync"; files: ProjectFiles }
   | { type: "is-complete"; id: number; source: string }
@@ -29,7 +30,10 @@ export type ToWorker =
 
 export type FromWorker =
   | { type: "status"; text: string }
-  | { type: "ready"; packages: Record<string, string>; missing: string[] }
+  // background: packages still installing after "ready" (reported via "installed").
+  | { type: "ready"; packages: Record<string, string>; missing: string[]; background: string[] }
+  | { type: "installed"; packages: Record<string, string> }
+  | { type: "info"; text: string; target: Target }
   | { type: "fatal"; error: string }
   | { type: "stdout"; text: string; target: Target }
   | { type: "stderr"; text: string; target: Target }

@@ -1,5 +1,6 @@
 import { Box } from "@chakra-ui/react";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
@@ -13,6 +14,8 @@ export type Stream = "stdout" | "stderr" | "info" | "input";
 export interface OutputTerminalHandle {
   write(text: string, stream: Stream): void;
   clear(): void;
+  /** Width in characters, refitted to the current size first. */
+  columns(): number;
 }
 
 const COLOR: Record<Stream, string> = { stdout: "", stderr: "\x1b[31m", info: "\x1b[36m", input: "\x1b[35m" };
@@ -58,6 +61,15 @@ export const OutputTerminal = forwardRef<OutputTerminalHandle, { label?: string 
       .then(() => {
         if (disposed) return;
         t.open(el);
+        // WebGL draws box-drawing characters as joined lines (Qiskit circuit
+        // drawings), like VS Code's terminal. Without WebGL, the DOM renderer stays.
+        try {
+          const webgl = new WebglAddon();
+          webgl.onContextLoss(() => webgl.dispose());
+          t.loadAddon(webgl);
+        } catch {
+          // No WebGL2: keep the DOM renderer.
+        }
         t.textarea?.setAttribute("aria-label", label);
         opened = true;
         fit.fit();
@@ -91,6 +103,10 @@ export const OutputTerminal = forwardRef<OutputTerminalHandle, { label?: string 
     write(text, stream) {
       const color = COLOR[stream];
       term.current?.write(color ? `${color}${text}${RESET}` : text);
+    },
+    columns() {
+      if (host.current?.offsetParent && term.current?.element) fitRef.current?.fit();
+      return term.current?.cols ?? 80;
     },
     clear() {
       term.current?.reset();

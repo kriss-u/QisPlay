@@ -271,6 +271,10 @@ _INDEX_MODULES = [
     "qiskit_aer",
     "qiskit_aer.noise",
     "qiskit_aer.primitives",
+    # Installed in the background after startup (see _invalidate_index).
+    "qiskit_algorithms",
+    "qiskit_algorithms.optimizers",
+    "qiskit_algorithms.minimum_eigensolvers",
 ]
 
 # Conventional aliases: typing the alias offers the import.
@@ -279,10 +283,17 @@ _ALIASES = {
     "plt": "import matplotlib.pyplot as plt",
     "mpl": "import matplotlib as mpl",
     "rx": "import rustworkx as rx",
+    "pd": "import pandas as pd",
 }
 
 _index = None
 _project_names = {}  # path -> (mtime, [(name, kind)])
+
+
+def _invalidate_index():
+    """Rebuild the index on the next completion (after packages were installed)."""
+    global _index
+    _index = None
 
 
 def _build_index():

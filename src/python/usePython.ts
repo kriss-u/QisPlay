@@ -30,6 +30,7 @@ export function usePython(sink: OutputSink) {
   const [status, setStatus] = useState("Starting worker…");
   const [packages, setPackages] = useState<Record<string, string>>({});
   const [missing, setMissing] = useState<string[]>([]);
+  const [background, setBackground] = useState<string[]>([]);
   const [figures, setFigures] = useState<string[]>([]);
 
   const workerRef = useRef<Worker | null>(null);
@@ -78,8 +79,15 @@ export function usePython(sink: OutputSink) {
         case "ready":
           setPackages(msg.packages);
           setMissing(msg.missing);
+          setBackground(msg.background);
           setStatus("Ready");
           setState("ready");
+          break;
+        case "installed":
+          setPackages((p) => ({ ...p, ...msg.packages }));
+          break;
+        case "info":
+          sinkRef.current.write(msg.text, "info", msg.target);
           break;
         case "fatal":
           setStatus("Failed to start Python");
@@ -142,16 +150,17 @@ export function usePython(sink: OutputSink) {
 
   /** Runs `entry` as a script in a fresh namespace. Resolves null if aborted. */
   const run = useCallback(
-    (entry: string, files: ProjectFiles) => {
+    (entry: string, files: ProjectFiles, columns: number) => {
       setFigures([]);
-      return execute({ type: "run", id: ++nextId.current, entry, files });
+      return execute({ type: "run", id: ++nextId.current, entry, files, columns });
     },
     [execute],
   );
 
   /** Runs console input in the console's persistent namespace. */
   const runConsole = useCallback(
-    (source: string, files: ProjectFiles) => execute({ type: "console", id: ++nextId.current, source, files }),
+    (source: string, files: ProjectFiles, columns: number) =>
+      execute({ type: "console", id: ++nextId.current, source, files, columns }),
     [execute],
   );
 
@@ -208,6 +217,8 @@ export function usePython(sink: OutputSink) {
     status,
     packages,
     missing,
+    /** Still installing in the background; drops out once it's in `packages`. */
+    loadingPackages: background.filter((name) => !(name in packages)),
     figures,
     setFigures,
     run,
