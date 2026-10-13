@@ -31,7 +31,13 @@ npm run build:wasm # rebuild the qiskit / qiskit-aer wheels (rarely needed)
   (`src/workspace/backgroundSave.ts`).
 - **Editor:** CodeMirror 6 with VS Code Dark+ and Light+ colors, rainbow brackets,
   find/replace at the top, and Jedi autocompletion running inside the in-browser
-  Python.
+  Python. Autocomplete also offers **auto-imports**, which add the import to the file
+  when chosen:
+  - **Library names:** qiskit and qiskit_aer classes and functions, e.g. `plot_` offers
+    `from qiskit.visualization import plot_histogram`.
+  - **Your own files:** functions and classes defined in other project files.
+  - **Aliases:** `np`, `plt`, `rx` and `mpl`.
+  - **Modules:** `math`, `json` and the like.
 - **Run:** executes the active `.py` file as `__main__` with the whole project
   importable. Files the script writes are saved back into the project. Plots go to a
   **Figures** tab (with a count, a PNG download per figure, and an automatic switch

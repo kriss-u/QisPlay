@@ -22,6 +22,8 @@ type Completeness = "complete" | "incomplete" | "invalid";
 
 const SIGINT = 2;
 const REQUEST_TIMEOUT_MS = 4000;
+// The first completion builds the auto-import index (imports qiskit etc.).
+const COMPLETION_TIMEOUT_MS = 12000;
 
 export function usePython(sink: OutputSink) {
   const [state, setState] = useState<RuntimeState>("loading");
@@ -153,6 +155,12 @@ export function usePython(sink: OutputSink) {
     [execute],
   );
 
+  /** Mirror the project into Python's filesystem (for autocomplete); skipped while busy. */
+  const syncProject = useCallback((files: ProjectFiles) => {
+    if (stateRef.current !== "ready") return;
+    workerRef.current?.postMessage({ type: "sync", files } satisfies ToWorker);
+  }, []);
+
   const resetConsole = useCallback(() => {
     workerRef.current?.postMessage({ type: "console-reset" } satisfies ToWorker);
   }, []);
@@ -166,14 +174,14 @@ export function usePython(sink: OutputSink) {
     }
   }, [boot]);
 
-  function request<T>(message: ToWorker & { id: number }, fallback: T): Promise<T> {
+  function request<T>(message: ToWorker & { id: number }, fallback: T, timeout = REQUEST_TIMEOUT_MS): Promise<T> {
     const worker = workerRef.current;
     if (!worker || stateRef.current !== "ready") return Promise.resolve(fallback);
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         pending.current.delete(message.id);
         resolve(fallback);
-      }, REQUEST_TIMEOUT_MS);
+      }, timeout);
       pending.current.set(message.id, (value) => {
         clearTimeout(timer);
         resolve((value as T) ?? fallback);
@@ -185,7 +193,7 @@ export function usePython(sink: OutputSink) {
   /** Jedi completions; empty while Python is loading or busy. */
   const complete = useCallback(
     (code: string, line: number, column: number, entry: string) =>
-      request<Completion[]>({ type: "complete", id: ++nextId.current, code, line, column, entry }, []),
+      request<Completion[]>({ type: "complete", id: ++nextId.current, code, line, column, entry }, [], COMPLETION_TIMEOUT_MS),
     [],
   );
 
@@ -205,6 +213,7 @@ export function usePython(sink: OutputSink) {
     run,
     runConsole,
     resetConsole,
+    syncProject,
     stop,
     complete,
     isComplete,

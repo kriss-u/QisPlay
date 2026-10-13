@@ -249,22 +249,170 @@ def _console(source, files, dirs):
 
 
 _COMPLETION_LIMIT = 150
+_AUTO_IMPORT_LIMIT = 60
+
+# Public names offered as auto-imports, searched in this order so each object is
+# offered from its shortest public module (QuantumCircuit -> `from qiskit import`).
+_INDEX_MODULES = [
+    "qiskit",
+    "qiskit.circuit",
+    "qiskit.circuit.library",
+    "qiskit.quantum_info",
+    "qiskit.visualization",
+    "qiskit.transpiler",
+    "qiskit.transpiler.passes",
+    "qiskit.primitives",
+    "qiskit.result",
+    "qiskit.synthesis",
+    "qiskit.converters",
+    "qiskit.qasm2",
+    "qiskit.qasm3",
+    "qiskit.providers.fake_provider",
+    "qiskit_aer",
+    "qiskit_aer.noise",
+    "qiskit_aer.primitives",
+]
+
+# Conventional aliases: typing the alias offers the import.
+_ALIASES = {
+    "np": "import numpy as np",
+    "plt": "import matplotlib.pyplot as plt",
+    "mpl": "import matplotlib as mpl",
+    "rx": "import rustworkx as rx",
+}
+
+_index = None
+_project_names = {}  # path -> (mtime, [(name, kind)])
+
+
+def _build_index():
+    """[(name, kind, module)] for the libraries above, plus importable modules."""
+    import importlib
+    import inspect
+    import pkgutil
+
+    entries, seen = [], set()
+    for modname in _INDEX_MODULES:
+        try:
+            mod = importlib.import_module(modname)
+        except Exception:
+            continue
+        names = getattr(mod, "__all__", None) or [n for n in dir(mod) if not n.startswith("_")]
+        for name in names:
+            if name.startswith("_"):
+                continue
+            try:
+                obj = getattr(mod, name)
+            except Exception:
+                continue
+            if inspect.ismodule(obj):
+                continue
+            kind = "class" if inspect.isclass(obj) else "function" if callable(obj) else None
+            if kind is None or (name, id(obj)) in seen:
+                continue
+            seen.add((name, id(obj)))
+            entries.append((name, kind, f"from {modname} import {name}"))
+
+    modules = set(getattr(sys, "stdlib_module_names", ()))
+    modules.update(m.name for m in pkgutil.iter_modules() if m.ispkg or not m.name.startswith("test"))
+    for name in sorted(modules):
+        if not name.startswith("_") and name.isidentifier():
+            entries.append((name, "module", f"import {name}"))
+    return entries
+
+
+def _project_symbols(current):
+    """Top-level functions/classes in the project's other .py files."""
+    import ast
+
+    out = []
+    for root, dirs, names in os.walk(PROJECT_DIR):
+        dirs[:] = [d for d in dirs if d != "__pycache__" and not d.startswith(".")]
+        for n in names:
+            if not n.endswith(".py"):
+                continue
+            full = os.path.join(root, n)
+            rel = _rel(full)
+            if rel == current:
+                continue
+            mtime = os.stat(full).st_mtime_ns
+            cached = _project_names.get(rel)
+            if not cached or cached[0] != mtime:
+                try:
+                    with open(full, encoding="utf-8") as f:
+                        tree = ast.parse(f.read())
+                    symbols = [
+                        (node.name, "class" if isinstance(node, ast.ClassDef) else "function")
+                        for node in tree.body
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                        and not node.name.startswith("_")
+                    ]
+                except Exception:
+                    symbols = []
+                cached = _project_names[rel] = (mtime, symbols)
+            module = rel[:-3].replace("/", ".")
+            if module.endswith(".__init__"):
+                module = module[: -len(".__init__")]
+            if not all(part.isidentifier() for part in module.split(".")):
+                continue
+            out.extend((name, kind, f"from {module} import {name}") for name, kind in cached[1])
+    return out
+
+
+def _auto_imports(prefix, taken, current):
+    global _index
+    if _index is None:
+        _index = _build_index()
+    low = prefix.lower()
+    items, offered = [], set()
+    for alias, statement in _ALIASES.items():
+        if alias.startswith(low) and alias not in taken:
+            items.append({"label": alias, "type": "module", "detail": statement, "import": statement})
+            offered.add(alias)
+    for name, kind, statement in _project_symbols(current) + _index:
+        if len(items) >= _AUTO_IMPORT_LIMIT:
+            break
+        if name in taken or (name, statement) in offered or not name.lower().startswith(low):
+            continue
+        offered.add((name, statement))
+        items.append({"label": name, "type": kind, "detail": statement, "import": statement})
+    return items
 
 
 def _complete(code, line, column, entry):
-    """Jedi completions at (1-based line, 0-based column)."""
+    """Jedi completions at (1-based line, 0-based column), plus auto-import suggestions."""
+    import re
+
     import jedi
 
     path = os.path.join(PROJECT_DIR, entry) if entry else None
     try:
         script = jedi.Script(code, path=path, project=jedi.Project(PROJECT_DIR))
-        items = script.complete(line, column)
+        found = script.complete(line, column)
     except Exception:
-        return []
-    return [
+        found = []
+    items = [
         {"label": c.name, "type": c.type, "detail": c.description if c.type != "keyword" else ""}
-        for c in items[:_COMPLETION_LIMIT]
+        for c in found[:_COMPLETION_LIMIT]
     ]
+
+    # Auto-import only for a bare name (not `obj.attr`, not inside an import line).
+    text = (code.splitlines()[line - 1] if line - 1 < len(code.splitlines()) else "")[:column]
+    match = re.search(r"[A-Za-z_][A-Za-z0-9_]*$", text)
+    stripped = text.lstrip()
+    if (
+        match
+        and len(match.group()) >= 2
+        and not text[: match.start()].rstrip().endswith(".")
+        and not stripped.startswith(("import ", "from "))
+        and "#" not in text
+    ):
+        taken = {c.name for c in found}
+        try:
+            items += _auto_imports(match.group(), taken, entry)
+        except Exception:
+            pass
+    return items
 
 
 os.makedirs(PROJECT_DIR, exist_ok=True)

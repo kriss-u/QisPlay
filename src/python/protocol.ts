@@ -11,6 +11,8 @@ export interface Completion {
   label: string;
   type: string;
   detail: string;
+  /** Auto-import: the statement to add when this completion is chosen. */
+  import?: string;
 }
 
 /** Where output goes: the Output pane (scripts) or the Console. */
@@ -21,6 +23,7 @@ export type ToWorker =
   | { type: "run"; id: number; entry: string; files: ProjectFiles }
   | { type: "console"; id: number; source: string; files: ProjectFiles }
   | { type: "console-reset" }
+  | { type: "sync"; files: ProjectFiles }
   | { type: "is-complete"; id: number; source: string }
   | { type: "complete"; id: number; code: string; line: number; column: number; entry: string };
 

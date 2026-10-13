@@ -192,6 +192,20 @@ ctx.onmessage = async (event: MessageEvent<ToWorker>) => {
     execute(msg.id, "run", (f, d) => runner!._run(msg.entry, f, d), msg.files);
   } else if (msg.type === "console") {
     execute(msg.id, "console", (f, d) => runner!._console(msg.source, f, d), msg.files);
+  } else if (msg.type === "sync") {
+    // Keep the project on disk current so autocomplete sees other files' latest code.
+    if (py && runner) {
+      const f = py.toPy(msg.files.files);
+      const d = py.toPy(msg.files.dirs);
+      try {
+        runner._sync_project(f, d);
+      } catch {
+        // Best effort; the next run syncs again.
+      } finally {
+        f.destroy();
+        d.destroy();
+      }
+    }
   } else if (msg.type === "console-reset") {
     runner?._console_reset();
   } else if (msg.type === "is-complete") {

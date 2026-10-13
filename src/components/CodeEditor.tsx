@@ -8,6 +8,7 @@ import { python } from "@codemirror/lang-python";
 import { gotoLine, openSearchPanel, search } from "@codemirror/search";
 import CodeMirror, { EditorState, keymap, Prec } from "@uiw/react-codemirror";
 import { useEffect, useMemo, useRef } from "react";
+import { importChange } from "../app/autoImport";
 import { useColorMode } from "../app/colorMode";
 import { editorTheme } from "../app/editorThemes";
 import { rainbowBrackets } from "../app/rainbowBrackets";
@@ -39,6 +40,8 @@ const PHRASES = EditorState.phrases.of({
   "Go to line": "Go to line",
   go: "Go",
 });
+
+const AUTO_IMPORT_SECTION = { name: "Auto-import", rank: 1 };
 
 // Jedi's completion types -> CodeMirror's icon names.
 const TYPE_MAP: Record<string, string> = {
@@ -75,11 +78,28 @@ export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelect
       const line = ctx.state.doc.lineAt(ctx.pos);
       const items = await fn(ctx.state.doc.toString(), line.number, ctx.pos - line.from, path);
       if (ctx.aborted || items.length === 0) return null;
-      const options: CMCompletion[] = items.map((i) => ({
-        label: i.label,
-        type: TYPE_MAP[i.type] ?? "variable",
-        detail: i.detail && i.detail !== i.label ? i.detail : undefined,
-      }));
+      const options: CMCompletion[] = items.map((i) =>
+        i.import
+          ? {
+              // Not in scope yet: choosing it also adds the import (one undo step).
+              label: i.label,
+              type: TYPE_MAP[i.type] ?? "variable",
+              detail: i.import,
+              section: AUTO_IMPORT_SECTION,
+              boost: -1,
+              apply: (view, _completion, from, to) => {
+                const add = importChange(view.state, i.import!);
+                // Import first: at the same position, earlier changes' text comes first.
+                const changes = view.state.changes([...(add ? [add] : []), { from, to, insert: i.label }]);
+                view.dispatch({ changes, selection: { anchor: changes.mapPos(to, 1) }, scrollIntoView: true });
+              },
+            }
+          : {
+              label: i.label,
+              type: TYPE_MAP[i.type] ?? "variable",
+              detail: i.detail && i.detail !== i.label ? i.detail : undefined,
+            },
+      );
       return { from: word?.from ?? ctx.pos, options, validFor: /^\w*$/ };
     }
 

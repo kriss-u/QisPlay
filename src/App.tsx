@@ -286,6 +286,15 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Mirror the project into Python's filesystem shortly after edits, so
+  // autocomplete (and auto-import) sees other files' latest code.
+  const { syncProject } = py;
+  useEffect(() => {
+    if (py.state !== "ready" || !ws.loaded) return;
+    const timer = setTimeout(() => syncProject(snapshot()), 800);
+    return () => clearTimeout(timer);
+  }, [ws.files, ws.loaded, py.state, syncProject, snapshot]);
+
   useEffect(() => {
     document.title = ws.project ? `${ws.project.name} — ${APP_NAME}` : APP_NAME;
   }, [ws.project]);
