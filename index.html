@@ -20,6 +20,11 @@
         document.documentElement.classList.add(dark ? "dark" : "light");
         document.documentElement.style.colorScheme = dark ? "dark" : "light";
       } catch (e) {}
+      // Same for the saved zoom (see src/app/SettingsProvider.tsx).
+      try {
+        var z = JSON.parse(localStorage.getItem("qisplay:settings") || "{}").zoom;
+        if (typeof z === "number" && z !== 1 && z >= 0.5 && z <= 2) document.documentElement.style.fontSize = z * 100 + "%";
+      } catch (e) {}
     </script>
   </head>
   <body>

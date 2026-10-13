@@ -13,6 +13,7 @@ import { importChange } from "../app/autoImport";
 import { useColorMode } from "../app/colorMode";
 import { editorTheme } from "../app/editorThemes";
 import { rainbowBrackets } from "../app/rainbowBrackets";
+import { useSettings } from "../app/settings";
 import type { Completion } from "../python/protocol";
 
 interface Props {
@@ -59,6 +60,7 @@ const TYPE_MAP: Record<string, string> = {
 
 export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelection, complete }: Props) {
   const { colorMode } = useColorMode();
+  const { fontSize, zoom } = useSettings();
   // Keep callbacks in refs so the extensions (and editor state) are built once.
   const runRef = useRef(onRun);
   const runSelectionRef = useRef(onRunSelection);
@@ -148,7 +150,7 @@ export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelect
       editable={!readOnly}
       theme={editorTheme(colorMode)}
       height="100%"
-      style={{ height: "100%", fontSize: 14 }}
+      style={{ height: "100%", fontSize: fontSize * zoom }}
       basicSetup={{ tabSize: 4, autocompletion: true, highlightActiveLine: false }}
     />
   );

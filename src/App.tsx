@@ -29,11 +29,13 @@ import {
   LuMoon,
   LuPackage,
   LuPlay,
+  LuSettings,
   LuSquare,
   LuSun,
 } from "react-icons/lu";
 import { APP_NAME } from "./app/brand";
 import { useColorMode, type ColorModeSetting } from "./app/colorMode";
+import { useSettings } from "./app/settings";
 import { formatKeys, matches, PALETTE_KEYS } from "./app/shortcuts";
 import { CommandPalette, type Command } from "./components/CommandPalette";
 import { ConsolePanel, type ConsoleHandle } from "./components/ConsolePanel";
@@ -42,6 +44,7 @@ import { FileExplorer } from "./components/FileExplorer";
 import { Logo } from "./components/Logo";
 import { OutputTerminal, type OutputTerminalHandle } from "./components/OutputTerminal";
 import { ProjectMenu } from "./components/ProjectMenu";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { showError, toaster } from "./components/toast";
 import { useFileActions } from "./components/useFileActions";
@@ -67,6 +70,7 @@ export default function App() {
   const ws = useWorkspace();
   const fileActions = useFileActions(ws);
   const { setting: themeSetting, setColorMode } = useColorMode();
+  const settings = useSettings();
   const output = useRef<OutputTerminalHandle>(null);
   const console_ = useRef<ConsoleHandle>(null);
   const sink = useMemo<OutputSink>(
@@ -88,6 +92,7 @@ export default function App() {
   const lastSizes = useRef(DEFAULT_SIZES);
   const [palette, setPalette] = useState<"files" | "commands" | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const entry = ws.active && isPython(ws.active) ? ws.active : null;
   const canRun = py.state === "ready" && entry !== null;
@@ -260,6 +265,17 @@ export default function App() {
     },
     { id: "zip", title: "Download project as .zip", run: () => void exportProject(ws) },
     { id: "import", title: "Open project from .zip…", run: () => void importProject(ws) },
+    { id: "settings", title: "Settings", keys: "Mod+,", run: () => setShowSettings(true) },
+    // VS Code's window zoom. Overrides browser zoom so the editor and terminals scale too.
+    {
+      id: "zoom-in",
+      title: "View: Zoom in",
+      keys: "Mod+=",
+      alsoKeys: ["Mod+Shift+=", "Mod+NumpadAdd"],
+      run: () => settings.zoomBy(1),
+    },
+    { id: "zoom-out", title: "View: Zoom out", keys: "Mod+-", alsoKeys: ["Mod+NumpadSubtract"], run: () => settings.zoomBy(-1) },
+    { id: "zoom-reset", title: "View: Reset zoom", keys: "Mod+0", alsoKeys: ["Mod+Numpad0"], run: () => settings.reset("zoom") },
     { id: "theme-light", title: "Theme: Light", run: () => setColorMode("light") },
     { id: "theme-dark", title: "Theme: Dark", run: () => setColorMode("dark") },
     { id: "theme-system", title: "Theme: Match system", run: () => setColorMode("system") },
@@ -450,6 +466,7 @@ export default function App() {
           onSelect={({ value }) => {
             if (value === "packages") setShowPackages(true);
             else if (value === "shortcuts") setShowShortcuts(true);
+            else if (value === "settings") setShowSettings(true);
           }}
         >
           <Menu.Trigger asChild>
@@ -483,6 +500,9 @@ export default function App() {
                 <Menu.Separator />
                 <Menu.Item value="packages" disabled={py.state === "loading"}>
                   <LuPackage /> Installed packages
+                </Menu.Item>
+                <Menu.Item value="settings">
+                  <LuSettings /> Settings
                 </Menu.Item>
                 <Menu.Item value="shortcuts">
                   <LuCircleHelp /> Keyboard shortcuts
@@ -548,6 +568,15 @@ export default function App() {
             </Portal>
           </Menu.Root>
 
+          <IconButton
+            size="xs"
+            variant="ghost"
+            aria-label="Settings"
+            title={`Settings (${formatKeys("Mod+,")})`}
+            onClick={() => setShowSettings(true)}
+          >
+            <LuSettings />
+          </IconButton>
           <IconButton
             size="xs"
             variant="ghost"
@@ -675,6 +704,7 @@ export default function App() {
           </Dialog.Positioner>
         </Portal>
       </Dialog.Root>
+      <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
       <ShortcutsDialog open={showShortcuts} onClose={() => setShowShortcuts(false)} commands={commands} />
     </Flex>
   );

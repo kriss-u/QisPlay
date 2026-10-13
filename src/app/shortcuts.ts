@@ -60,7 +60,14 @@ export function formatKeys(keys: Keys) {
 function keyFromCode(code: string) {
   if (code.startsWith("Key")) return code.slice(3).toLowerCase();
   if (code.startsWith("Digit")) return code.slice(5);
-  const named: Record<string, string> = { Backquote: "`", Slash: "/", Comma: ",", Period: "." };
+  const named: Record<string, string> = {
+    Backquote: "`",
+    Slash: "/",
+    Comma: ",",
+    Period: ".",
+    Equal: "=",
+    Minus: "-",
+  };
   return named[code] ?? code; // F5, Enter, PageDown, ArrowRight, ...
 }
 
@@ -71,8 +78,10 @@ export function matches(keys: Keys, e: KeyboardEvent) {
   // Off macOS, "Ctrl" and "Mod" are the same key. On macOS, Mod is ⌘ and Ctrl is ⌃.
   const wantMod = want.has("Mod") || (!isMac && want.has("Ctrl"));
   const wantMacCtrl = isMac && want.has("Ctrl");
+  // Punctuation also matches by character, for layouts where "=" or "-" sit elsewhere.
+  const byChar = key.length === 1 && !/[a-z0-9]/i.test(key) && e.key === key;
   return (
-    keyFromCode(e.code).toLowerCase() === key.toLowerCase() &&
+    (byChar || keyFromCode(e.code).toLowerCase() === key.toLowerCase()) &&
     (isMac ? e.metaKey : e.ctrlKey) === wantMod &&
     (!isMac || e.ctrlKey === wantMacCtrl) &&
     e.shiftKey === want.has("Shift") &&

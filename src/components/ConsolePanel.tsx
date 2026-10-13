@@ -7,6 +7,7 @@ import { LuRotateCcw } from "react-icons/lu";
 import { useColorMode } from "../app/colorMode";
 import { editorTheme } from "../app/editorThemes";
 import { rainbowBrackets } from "../app/rainbowBrackets";
+import { useSettings } from "../app/settings";
 import { formatKeys } from "../app/shortcuts";
 import { OutputTerminal, type OutputTerminalHandle, type Stream } from "./OutputTerminal";
 
@@ -81,6 +82,7 @@ export const ConsolePanel = forwardRef<ConsoleHandle, Props>(function ConsolePan
   const cursor = useRef<number>(history.current.length); // index into history while browsing
   const draft = useRef("");
   const { colorMode } = useColorMode();
+  const { fontSize, zoom } = useSettings();
 
   // Props change every render; the keymap reads them through a ref.
   const live = useRef({ ready, busy, execute, isComplete });
@@ -230,7 +232,7 @@ export const ConsolePanel = forwardRef<ConsoleHandle, Props>(function ConsolePan
             editable={ready}
             placeholder={ready ? (busy ? "Running…" : "Type Python and press Enter") : "Loading Python…"}
             basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false, autocompletion: false }}
-            style={{ fontSize: 14, background: "transparent" }}
+            style={{ fontSize: fontSize * zoom, background: "transparent" }}
           />
         </Box>
         <Button

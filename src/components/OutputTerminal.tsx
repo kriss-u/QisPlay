@@ -5,6 +5,7 @@ import "@xterm/xterm/css/xterm.css";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useColorMode } from "../app/colorMode";
 import { terminalTheme } from "../app/editorThemes";
+import { useSettings } from "../app/settings";
 import { MONO_FONT } from "../app/system";
 
 export type Stream = "stdout" | "stderr" | "info" | "input";
@@ -26,6 +27,10 @@ export const OutputTerminal = forwardRef<OutputTerminalHandle, { label?: string 
   const term = useRef<Terminal | null>(null);
   const { colorMode } = useColorMode();
   const theme = terminalTheme[colorMode];
+  const { fontSize: codeSize, zoom } = useSettings();
+  const fontSize = Math.round((codeSize - 1) * zoom * 2) / 2; // output is a touch smaller than the editor
+  const fontSizeRef = useRef(fontSize);
+  const fitRef = useRef<FitAddon | null>(null);
 
   useEffect(() => {
     const t = new Terminal({
@@ -34,11 +39,12 @@ export const OutputTerminal = forwardRef<OutputTerminalHandle, { label?: string 
       cursorBlink: false,
       scrollback: 10000,
       fontFamily: MONO_FONT,
-      fontSize: 13,
+      fontSize: fontSizeRef.current,
       screenReaderMode: false,
     });
     const fit = new FitAddon();
     t.loadAddon(fit);
+    fitRef.current = fit;
     t.write("\x1b[?25l"); // hide cursor: this is an output view, not a shell
     term.current = t; // writes before open() are buffered
 
@@ -47,7 +53,7 @@ export const OutputTerminal = forwardRef<OutputTerminalHandle, { label?: string 
     let opened = false;
     const el = host.current!;
     void document.fonts
-      .load(`13px ${MONO_FONT}`)
+      .load(`${fontSizeRef.current}px ${MONO_FONT}`)
       .catch(() => {})
       .then(() => {
         if (disposed) return;
@@ -72,6 +78,14 @@ export const OutputTerminal = forwardRef<OutputTerminalHandle, { label?: string 
   useEffect(() => {
     if (term.current) term.current.options.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    fontSizeRef.current = fontSize;
+    const t = term.current;
+    if (!t || t.options.fontSize === fontSize) return;
+    t.options.fontSize = fontSize;
+    if (host.current?.offsetParent && t.element) fitRef.current?.fit();
+  }, [fontSize]);
 
   useImperativeHandle(ref, () => ({
     write(text, stream) {
