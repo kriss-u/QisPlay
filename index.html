@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
-    <title>QisPlay</title>
-    <meta name="description" content="Write and run Python, Qiskit and Qiskit Aer entirely in your browser — nothing to install." />
+    <title>%APP_TITLE%</title>
+    <meta name="description" content="%APP_DESCRIPTION%" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -23,7 +23,19 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Crawler-readable content and loading splash; React replaces it on mount. -->
+      <main style="display:flex;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;font-family:system-ui,sans-serif;line-height:1.5">
+        <img src="/logo.svg" alt="" width="64" height="64" />
+        <h1 style="margin:0;font-size:1.5rem">QisPlay: Python &amp; Qiskit playground in your browser</h1>
+        <p style="margin:0;max-width:34rem;opacity:.75">
+          Write and run Python, Qiskit and Qiskit Aer quantum circuits with a VS Code-style
+          editor, file explorer, console and plots. Free, no install, no account. Your
+          projects stay in your browser.
+        </p>
+        <noscript><p>QisPlay needs JavaScript enabled to run.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

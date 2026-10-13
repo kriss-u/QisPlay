@@ -15,3 +15,7 @@
 # Always revalidate the service worker so updates roll out promptly.
 /sw.js
   Cache-Control: no-cache
+
+# Keep the *.pages.dev mirror out of search results; the canonical site is qisplay.nepcodex.com.
+https://:project.pages.dev/*
+  X-Robots-Tag: noindex

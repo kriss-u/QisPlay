@@ -89,6 +89,28 @@ The site is fully static. In Pages, use these settings:
 - **Package CDN:** scientific packages (numpy, scipy, matplotlib…) load from the
   version-pinned jsDelivr Pyodide CDN, which sends CORS headers, so it works with COEP.
 
+## SEO, social sharing and analytics
+
+`vite-seo.ts` (a Vite plugin, configured in `vite.config.ts`) runs on every build:
+
+- **Meta tags:** title, description, canonical, robots, Open Graph (Facebook, LinkedIn,
+  WhatsApp, Slack, Discord, Telegram) and Twitter/X cards, plus JSON-LD
+  (`WebSite` + `WebApplication`). Text and URLs come from `src/app/brand.ts`.
+- **Share image:** `public/og-image.png` (1200×630). Regenerate it from
+  `scripts/og-image.svg` with `rsvg-convert -w 1200 -h 630 scripts/og-image.svg -o public/og-image.png`.
+- **Generated files:** `dist/sitemap.xml` and `dist/robots.txt`. `lastmod` is the last
+  git commit date, so it refreshes with every deploy and only moves when something
+  really changed.
+- **Crawlable content:** `index.html` ships a real `<h1>` and description inside
+  `#root`; it doubles as the loading splash and React replaces it on mount.
+- **Environment variables** (see `.env.example`; set them in Pages for production):
+  - `SITE_URL`: canonical origin. Defaults to `DEFAULT_SITE_URL` in `brand.ts`
+    (https://qisplay.nepcodex.com).
+  - `VITE_GA_ID`: Google Analytics 4 ID. Analytics is only injected in production
+    builds when it's set, and skipped for visitors with Do Not Track or Global
+    Privacy Control. It uses gtag.js directly, not Tag Manager: GTM can load
+    arbitrary third-party tags, which COEP would block.
+
 ## Project archives
 
 **Download as .zip** writes the project's files plus `.qisplay/project.json`, a
@@ -189,6 +211,7 @@ src/workspace/                 IndexedDB (Dexie), file ops, zip archives, backgr
 src/components/                explorer, tabs, editor, console, palette, dialogs
 public/sw.js                   service worker that finishes saves after the tab closes
 public/_headers                Cloudflare Pages headers (COOP/COEP, caching)
+vite-seo.ts                    SEO plugin: meta tags, JSON-LD, sitemap, robots, GA4
 public/wheels/                 compiled qiskit + qiskit-aer wheels and manifest.json
 build-wasm/                    build.sh + patches for those wheels
 scripts/                       copy Pyodide runtime and Material icons into public/
