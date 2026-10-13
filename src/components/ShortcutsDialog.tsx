@@ -8,8 +8,8 @@ const EDITOR_KEYS: { title: string; keys: Keys }[] = [
   { title: "Trigger suggestions", keys: "Ctrl+Space" },
   { title: "Toggle line comment", keys: "Mod+/" },
   { title: "Find", keys: "Mod+f" },
-  { title: "Find and replace", keys: "Mod+h" },
-  { title: "Go to line", keys: "Mod+g" },
+  { title: "Find and replace", keys: { mac: "Mod+Alt+f", other: "Ctrl+h" } },
+  { title: "Go to line", keys: "Ctrl+g" },
   { title: "Select next occurrence", keys: "Mod+d" },
   { title: "Select all occurrences", keys: "Mod+Shift+l" },
   { title: "Move line up / down", keys: "Alt+ArrowUp" },
@@ -40,8 +40,9 @@ export function ShortcutsDialog({ open, onClose, commands }: { open: boolean; on
             </Dialog.Header>
             <Dialog.Body>
               <Text fontSize="sm" color="fg.muted" mb="3">
-                Modeled on VS Code. Some browser-reserved keys (like closing a tab) can't be used by web apps, so
-                those commands use an alternative.
+                Modeled on VS Code. Keys your browser or operating system reserves (new or private window, closing
+                or switching browser tabs, hiding the app) never reach web pages, so those commands use the
+                alternatives listed here.
               </Text>
               <Heading size="sm" mt="2" mb="1">
                 General

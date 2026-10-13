@@ -39,8 +39,14 @@ npm run build:wasm # rebuild the qiskit / qiskit-aer wheels (rarely needed)
   queued input and Restart. **Shift+Enter** in the editor sends the selection (or the
   current line) to it, as in VS Code.
 - **Keyboard:** VS Code shortcuts shown per platform (⌘ on macOS, Ctrl elsewhere),
-  plus a command palette (`Mod+Shift+P`), quick open (`Mod+P`) and a help dialog.
-  Shortcuts that browsers reserve, like `Ctrl+W` and `Ctrl+N`, use `Alt+` alternatives.
+  plus a command palette (`F1`, or `Mod+Shift+P` except on Firefox), quick open
+  (`Mod+P`) and a help dialog. Keys that browsers or the OS reserve never reach a
+  page, so those commands use alternatives:
+  - **New file / close tab:** `Ctrl+N` and `Ctrl+W` become `Alt+N` and `Alt+W`.
+  - **Switch editor tab:** `Ctrl+PgUp/PgDn` and `⌘⌥←/→` become `Alt+PgUp/PgDn`, or
+    `⌃⌥←/→` on macOS.
+  - **Replace:** `⌘H` on macOS becomes `⌘⌥F`.
+  - **Go to line:** `⌘G` becomes `⌃G`.
 - **Themes:** light, dark, or follow the system. The choice is applied before first
   paint, with no flash.
 - **Stop:** interrupts running code through a SharedArrayBuffer, which requires

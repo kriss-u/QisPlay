@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuChevronDown, LuChevronUp, LuCircleHelp, LuMonitor, LuMoon, LuPackage, LuPlay, LuSquare, LuSun } from "react-icons/lu";
 import { APP_NAME } from "./app/brand";
 import { useColorMode, type ColorModeSetting } from "./app/colorMode";
-import { formatKeys, matches } from "./app/shortcuts";
+import { formatKeys, matches, PALETTE_KEYS } from "./app/shortcuts";
 import { CommandPalette, type Command } from "./components/CommandPalette";
 import { ConsolePanel, type ConsoleHandle } from "./components/ConsolePanel";
 import { EditorPane } from "./components/EditorPane";
@@ -175,7 +175,13 @@ export default function App() {
       run: () => void ws.flush().then(() => toaster.create({ type: "success", title: "Saved", duration: 1200 })),
     },
     { id: "quick-open", title: "Go to file…", keys: "Mod+p", run: () => setPalette("files") },
-    { id: "palette", title: "Show all commands", keys: "Mod+Shift+p", alsoKeys: ["F1"], run: () => setPalette("commands") },
+    {
+      id: "palette",
+      title: "Show all commands",
+      keys: PALETTE_KEYS,
+      alsoKeys: ["F1", "Mod+Shift+p"],
+      run: () => setPalette("commands"),
+    },
     { id: "sidebar", title: "Toggle file explorer", keys: "Mod+b", run: () => toggle(0) },
     { id: "panel", title: "Toggle output panel", keys: "Mod+j", run: () => toggle(2) },
     {
@@ -199,13 +205,14 @@ export default function App() {
     {
       id: "next-tab",
       title: "Next editor tab",
-      keys: { mac: "Mod+Alt+ArrowRight", other: "Ctrl+PageDown" },
+      // Ctrl+PgDn / ⌘⌥→ switch browser tabs and can't be intercepted by pages.
+      keys: { mac: "Ctrl+Alt+ArrowRight", other: "Alt+PageDown" },
       run: () => cycleTab(1),
     },
     {
       id: "prev-tab",
       title: "Previous editor tab",
-      keys: { mac: "Mod+Alt+ArrowLeft", other: "Ctrl+PageUp" },
+      keys: { mac: "Ctrl+Alt+ArrowLeft", other: "Alt+PageUp" },
       run: () => cycleTab(-1),
     },
     {
@@ -356,7 +363,7 @@ export default function App() {
             size="xs"
             variant="ghost"
             aria-label="Keyboard shortcuts"
-            title={`Keyboard shortcuts · all commands: ${formatKeys("Mod+Shift+p")}`}
+            title={`Keyboard shortcuts · all commands: ${formatKeys(PALETTE_KEYS)}`}
             onClick={() => setShowShortcuts(true)}
           >
             <LuCircleHelp />

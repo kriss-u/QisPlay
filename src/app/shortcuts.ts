@@ -9,6 +9,14 @@ export const isMac =
       navigator.userAgent,
   );
 
+export const isFirefox = typeof navigator !== "undefined" && /firefox/i.test(navigator.userAgent);
+
+/**
+ * Command palette keys. Firefox reserves Ctrl/Cmd+Shift+P (new private window)
+ * and never lets pages see it, so there F1 (VS Code's alternative) is primary.
+ */
+export const PALETTE_KEYS = isFirefox ? "F1" : "Mod+Shift+p";
+
 /** A shortcut, optionally different on macOS (VS Code does this for a few commands). */
 export type Keys = string | { mac: string; other: string };
 

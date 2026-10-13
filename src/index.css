@@ -106,3 +106,76 @@ body,
   background: var(--chakra-colors-bg-muted);
   color: var(--chakra-colors-fg);
 }
+
+/* Go to line (Ctrl+G) panel, matching the find/replace panel. */
+.cm-editor .cm-panels-bottom {
+  border-top: 1px solid var(--chakra-colors-border) !important;
+}
+.cm-editor .cm-goto-line {
+  position: relative;
+  padding: 8px 40px 8px 10px !important;
+  font-family: var(--chakra-fonts-body);
+  font-size: 13px;
+}
+.cm-editor .cm-goto-line form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cm-editor .cm-goto-line label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--chakra-colors-fg-muted);
+}
+.cm-editor .cm-goto-line .cm-textfield {
+  width: 120px;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--chakra-colors-border-emphasized);
+  border-radius: var(--chakra-radii-md);
+  background: var(--chakra-colors-bg);
+  color: var(--chakra-colors-fg);
+  font-family: var(--chakra-fonts-mono, ui-monospace, monospace);
+  font-size: 13px;
+}
+.cm-editor .cm-goto-line .cm-textfield:focus {
+  outline: 2px solid var(--chakra-colors-blue-focus-ring);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+.cm-editor .cm-goto-line .cm-button {
+  height: 28px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid var(--chakra-colors-border-emphasized);
+  border-radius: var(--chakra-radii-md);
+  background: var(--chakra-colors-bg) !important;
+  background-image: none !important;
+  color: var(--chakra-colors-fg);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.cm-editor .cm-goto-line .cm-button:hover {
+  background: var(--chakra-colors-bg-muted) !important;
+}
+.cm-editor .cm-goto-line .cm-dialog-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--chakra-radii-md);
+  background: none;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cm-editor .cm-goto-line .cm-dialog-close:hover {
+  background: var(--chakra-colors-bg-muted);
+  color: var(--chakra-colors-fg);
+}

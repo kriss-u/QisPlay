@@ -107,8 +107,10 @@ export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelect
               return true;
             },
           },
-          { key: "Mod-h", run: openSearchPanel },
-          { key: "Mod-g", run: gotoLine },
+          // VS Code's bindings, which also avoid OS/browser keys: ⌘H hides the
+          // app on macOS and ⌘G is the browser's "find next".
+          { key: "Ctrl-h", mac: "Mod-Alt-f", run: openSearchPanel },
+          { key: "Ctrl-g", run: gotoLine },
           indentWithTab,
         ]),
       ),
