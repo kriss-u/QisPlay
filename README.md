@@ -1,36 +1,99 @@
-# py-wasm
+# QisPlay
 
-A browser-only Python runner: a CodeMirror editor, an xterm.js output pane and
-CPython compiled to WebAssembly ([Pyodide](https://pyodide.org) 314.0.7, Python 3.14).
-No backend executes code: everything runs in a Web Worker in the browser.
+A Python and Qiskit playground that runs entirely in the browser. It has a VS Code-style
+editor, a file explorer with projects, a Python console and plots. There's no server
+and no account; everything a user creates is stored in their own browser.
+
+> Developer notes. Users never see the implementation details below. The UI only
+> talks about "Python".
+
+Under the hood: CPython is compiled to WebAssembly by
+[Pyodide](https://pyodide.org) 314.0.7 (Python 3.14) and runs in a Web Worker.
+qiskit and qiskit-aer are cross-compiled here (see below).
 
 ```sh
-npm install      # also copies the Pyodide runtime into public/pyodide
-npm run dev      # http://localhost:5173
-npm run build    # static site in dist/ (serve it with the COOP/COEP headers below)
+npm install        # also copies the Pyodide runtime and file icons into public/
+npm run dev        # http://localhost:5173
+npm run build      # static site in dist/
+npm run build:wasm # rebuild the qiskit / qiskit-aer wheels (rarely needed)
 ```
 
-## What it does
+## Features
 
-- **Projects:** create, rename, switch between and delete projects, or download one as a
-  `.zip`. Everything is stored in this browser's IndexedDB (via Dexie): there is no
-  server, no account and no git. Clearing site data deletes it, so use the zip download
-  for anything you want to keep.
-- **File explorer:** files and folders with new, rename and delete (folders are deleted
-  recursively). Open files appear as tabs, and edits autosave after a short pause.
-- **Runs:** **Run** (`Ctrl/Cmd+Enter`) executes the active `.py` file as `__main__`,
-  with the whole project on Python's path, so `from helpers import ...` works across
-  files. Files the script writes (CSV, PNG and so on) are saved back into the project.
-  Image files open as previews.
-- **Editor:** CodeMirror 6 with autocompletion from Jedi, which runs inside the browser's
-  Python, so completions come from the actually installed numpy, qiskit, qiskit_aer and
-  so on.
-- **Output:** a read-only xterm.js pane, with matplotlib figures below it.
-- **No interactive shell:** the terminal has stdin disabled, `input()` raises an error,
-  each run starts fresh, and imports never download new packages.
-- **Stop:** interrupts a running script with `KeyboardInterrupt`. This needs
-  cross-origin isolation (COOP/COEP headers, configured in `vite.config.ts`); without
-  it, Stop restarts the runtime instead.
+- **Projects:** multiple projects stored in IndexedDB (via Dexie). You can create,
+  rename, switch and delete them, and download or open them as `.zip` (see
+  [Project archives](#project-archives)).
+- **Explorer:** files and folders with Material Icon Theme icons. Open files appear as
+  tabs, and edits autosave.
+- **Saving on close:** unsaved edits survive the tab closing. On `pagehide` they're
+  handed to a service worker (`public/sw.js`) that finishes writing them, and to a
+  synchronous localStorage journal that's replayed on the next visit
+  (`src/workspace/backgroundSave.ts`).
+- **Editor:** CodeMirror 6 with VS Code Dark+ and Light+ colors, rainbow brackets,
+  find/replace at the top, and Jedi autocompletion running inside the in-browser
+  Python.
+- **Run:** executes the active `.py` file as `__main__` with the whole project
+  importable. Files the script writes are saved back into the project, and
+  matplotlib figures appear in a collapsible pane.
+- **Console:** a Python REPL with a persistent namespace, multi-line input, history,
+  queued input and Restart. **Shift+Enter** in the editor sends the selection (or the
+  current line) to it, as in VS Code.
+- **Keyboard:** VS Code shortcuts shown per platform (⌘ on macOS, Ctrl elsewhere),
+  plus a command palette (`Mod+Shift+P`), quick open (`Mod+P`) and a help dialog.
+  Shortcuts that browsers reserve, like `Ctrl+W` and `Ctrl+N`, use `Alt+` alternatives.
+- **Themes:** light, dark, or follow the system. The choice is applied before first
+  paint, with no flash.
+- **Stop:** interrupts running code through a SharedArrayBuffer, which requires
+  cross-origin isolation (below). Without it, Stop restarts the runtime.
+- **Restrictions:** only the bundled packages can be imported (no `pip`), and
+  `input()` is disabled.
+
+## Deploying to Cloudflare Pages
+
+The site is fully static. In Pages, use these settings:
+
+| Setting | Value |
+| --- | --- |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Node version | from `.node-version` (22) |
+
+- **`public/_headers`:** this is required. It sets `Cross-Origin-Opener-Policy:
+  same-origin` and `Cross-Origin-Embedder-Policy: require-corp`, which the Stop button
+  needs. It also makes `/assets/*` immutable and always revalidates `sw.js`.
+- **Compiled wheels:** they're committed in `public/wheels/`, because Pages can't run
+  `build-wasm/build.sh`.
+- **Copied assets:** `public/pyodide/` and `public/file-icons/` are copied from
+  `node_modules` during the build, so they aren't committed.
+- **Size:** the build is about 28 MB in about 1,300 files. The largest file is
+  `pyodide.asm.wasm` at 9.6 MB, within Pages' 25 MiB per-file limit.
+- **Package CDN:** scientific packages (numpy, scipy, matplotlib…) load from the
+  version-pinned jsDelivr Pyodide CDN, which sends CORS headers, so it works with COEP.
+
+## Project archives
+
+**Download as .zip** writes the project's files plus `.qisplay/project.json`, a
+manifest carrying the metadata that lives in IndexedDB:
+
+```json
+{
+  "format": "qisplay-project",
+  "version": 1,
+  "project": { "name": "…", "createdAt": 0, "updatedAt": 0 },
+  "workspace": { "openTabs": ["main.py"], "activeFile": "main.py" },
+  "files": [{ "path": "data.bin", "kind": "file", "binary": true, "updatedAt": 0 }]
+}
+```
+
+**Open project from .zip…** recreates the project, including its tabs, the active file
+and timestamps:
+
+- **Manifest:** the name `.qisplay` is reserved for it.
+- **Plain zips:** a zip without a manifest (for example a zipped folder) also works;
+  a single top-level folder is unwrapped.
+- **Skipped entries:** junk entries (`__MACOSX`, `.DS_Store`, `__pycache__`), unsafe
+  paths and files over 20 MB are skipped.
+- **Name clashes:** these get a unique name, e.g. "Name (2)".
 
 ## Installed Python packages
 
@@ -98,17 +161,24 @@ Everything runs single-threaded, because the browser runtime has no threads.
 ## Layout
 
 ```
-src/python/pyodide.worker.ts  Pyodide boot, package install, run/interrupt
-src/python/bootstrap.py       matplotlib→PNG bridge, script runner, input() block
-src/python/usePython.ts       React hook owning the worker
-build-wasm/build.sh           cross-compiles qiskit + qiskit-aer to wasm wheels
-build-wasm/patches/           every change made to the upstream sources
-src/workspace/                IndexedDB schema (Dexie), project/file operations, zip export
-src/components/               explorer, editor tabs, CodeMirror, xterm.js output
-src/examples.ts               example scripts
-public/wheels/                drop-in location for locally compiled wasm wheels
-scripts/copy-pyodide.mjs      copies the runtime from node_modules to public/
+src/App.tsx                    layout, commands (shortcuts + palette), run/console wiring
+src/app/                       brand, color mode, editor themes, rainbow brackets, shortcuts
+src/python/pyodide.worker.ts   Python runtime: boot, packages, run / console / completion
+src/python/bootstrap.py        runner: project sync, tracebacks, figures, console, Jedi
+src/python/usePython.ts        React hook owning the worker
+src/workspace/                 IndexedDB (Dexie), file ops, zip archives, background save
+src/components/                explorer, tabs, editor, console, palette, dialogs
+public/sw.js                   service worker that finishes saves after the tab closes
+public/_headers                Cloudflare Pages headers (COOP/COEP, caching)
+public/wheels/                 compiled qiskit + qiskit-aer wheels and manifest.json
+build-wasm/                    build.sh + patches for those wheels
+scripts/                       copy Pyodide runtime and Material icons into public/
 ```
 
-The UI uses Chakra UI v3. The project registers the Chakra UI MCP server
-(`@chakra-ui/react-mcp`) in `.mcp.json` for Claude Code.
+## Credits
+
+- **File icons:** [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme)
+  (MIT). Its license is shipped as `file-icons/LICENSE`.
+- **Editor colors:** modeled on VS Code's Dark+ and Light+ themes.
+
+Made with ❤️ by Krishna Upadhyay.

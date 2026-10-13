@@ -45,7 +45,12 @@ const plugin = ViewPlugin.fromClass(
 const colors = EditorView.baseTheme(
   Object.fromEntries(
     (["light", "dark"] as const).flatMap((mode) =>
-      bracketColors[mode].map((color, i) => [`&${mode} .cm-rainbow-${i}`, { color }]),
+      // The syntax highlighter wraps brackets in its own (punctuation) span, so
+      // color that inner span too and win over it.
+      bracketColors[mode].map((color, i) => [
+        `&${mode} .cm-rainbow-${i}, &${mode} .cm-rainbow-${i} span`,
+        { color: `${color} !important` },
+      ]),
     ),
   ),
 );

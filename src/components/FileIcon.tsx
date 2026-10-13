@@ -34,7 +34,7 @@ function lookup(map: IconMap, light: boolean, pick: (t: Table) => string | undef
 }
 
 /** Resolves like the VS Code extension: exact file name, then longest extension. */
-export function iconName(map: IconMap, name: string, kind: "file" | "dir", open: boolean, light: boolean) {
+function iconName(map: IconMap, name: string, kind: "file" | "dir", open: boolean, light: boolean) {
   const lower = name.toLowerCase();
   if (kind === "dir") {
     return (

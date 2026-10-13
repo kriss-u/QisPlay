@@ -46,7 +46,7 @@ function obviouslyComplete(source: string) {
   if (source.includes("\n")) return false;
   const line = source.trimEnd();
   if (line.startsWith("@")) return false; // a decorator needs the def that follows
-  if (line.endsWith(":") || line.endsWith("\\") || line.includes('"""') || line.includes("\'\'\'")) return false;
+  if (line.endsWith(":") || line.endsWith("\\") || line.includes('"""') || line.includes("'''")) return false;
   let depth = 0;
   let quote: string | null = null;
   for (let i = 0; i < line.length; i++) {
