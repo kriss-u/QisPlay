@@ -50,7 +50,6 @@ export const OutputTerminal = forwardRef<OutputTerminalHandle, { label?: string 
     fitRef.current = fit;
     t.write("\x1b[?25l"); // hide cursor: this is an output view, not a shell
     term.current = t; // writes before open() are buffered
-    if (label === "Program output") (window as unknown as { __term: Terminal }).__term = t; // DEBUG-REMOVE
 
     // xterm measures the cell size on open(), so wait for the web font first.
     let disposed = false;
