@@ -24,6 +24,7 @@ const config = defineConfig({
           titlebar: c("#dddddd", "#3c3c3c"), // titleBar.activeBackground
           tab: c("#ececec", "#2d2d2d"), // tab.inactiveBackground
           statusbar: c("#007acc", "#007acc"), // statusBar.background
+          drop: c("#d6ebff", "#383b3d"), // list.dropBackground
         },
         fg: {
           DEFAULT: c("#333333", "#cccccc"),

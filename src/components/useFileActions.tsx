@@ -3,11 +3,11 @@ import type { FileEntry } from "../workspace/db";
 import { basename, dirname, join, validateName } from "../workspace/paths";
 import type { Workspace } from "../workspace/useWorkspace";
 import { EXAMPLES } from "../examples";
-import { createEntry, deleteEntry, renameEntry, uniquePath } from "../workspace/workspace";
+import { copyEntry, createEntry, deleteEntry, renameEntry, uniquePath } from "../workspace/workspace";
 import { useDialogs } from "./dialogContext";
 import { showError } from "./toast";
 
-/** Create / rename / delete with prompts; shared by the explorer and the command palette. */
+/** Create / rename / move / copy / delete; shared by the explorer and the command palette. */
 export function useFileActions(ws: Workspace, onReveal?: (folder: string) => void) {
   const dialogs = useDialogs();
   const projectId = ws.project?.id;
@@ -51,6 +51,33 @@ export function useFileActions(ws: Workspace, onReveal?: (folder: string) => voi
     }
   }
 
+  /** Moves a file or folder into `parent` ("" = project root), keeping its name. Returns the new path. */
+  async function move(path: string, parent: string) {
+    const to = join(parent, basename(path));
+    if (!projectId || to === path) return;
+    try {
+      await ws.flush();
+      ws.applyRename(await renameEntry(projectId, path, to));
+      if (parent) onReveal?.(parent);
+      return to;
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  /** Copies a file or folder into `parent`; returns the copy's path. */
+  async function copy(path: string, parent: string) {
+    if (!projectId) return;
+    try {
+      await ws.flush(); // copy what the editor shows, not the last autosave
+      const to = await copyEntry(projectId, path, parent);
+      if (parent) onReveal?.(parent);
+      return to;
+    } catch (err) {
+      showError(err);
+    }
+  }
+
   async function remove(entry: FileEntry) {
     if (!projectId) return;
     const isDir = entry.kind === "dir";
@@ -86,5 +113,5 @@ export function useFileActions(ws: Workspace, onReveal?: (folder: string) => voi
     }
   }
 
-  return { create, rename, remove, addExample };
+  return { create, rename, move, copy, remove, addExample };
 }

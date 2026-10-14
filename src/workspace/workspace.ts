@@ -115,6 +115,37 @@ export async function renameEntry(projectId: string, from: string, to: string) {
   return moved;
 }
 
+/** "name.py" if it's free in `parent`, else "name copy.py", "name copy 2.py", ... (as VS Code pastes). */
+async function copyName(projectId: string, parent: string, name: string, isDir: boolean) {
+  const dot = isDir ? -1 : name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  for (let i = 0; ; i++) {
+    const candidate = join(parent, i === 0 ? name : `${stem} copy${i === 1 ? "" : ` ${i}`}${ext}`);
+    if (!(await db.files.get([projectId, candidate]))) return candidate;
+  }
+}
+
+/** Copies a file, or a folder with everything inside it, into `parent`. Returns the new path. */
+export async function copyEntry(projectId: string, from: string, parent: string) {
+  if (parent === from || isInside(parent, from)) throw new WorkspaceError("Can't copy a folder into itself");
+  let to = "";
+  await db.transaction("rw", db.files, db.projects, async () => {
+    const entry = await db.files.get([projectId, from]);
+    if (!entry) throw new WorkspaceError(`"${from}" no longer exists`);
+    if (parent && (await db.files.get([projectId, parent]))?.kind !== "dir") {
+      throw new WorkspaceError(`"${parent}" is not a folder`);
+    }
+    to = await copyName(projectId, parent, basename(from), entry.kind === "dir");
+    const all = await db.files.where("projectId").equals(projectId).toArray();
+    for (const f of all.filter((f) => f.path === from || isInside(f.path, from))) {
+      await db.files.put({ ...f, path: to + f.path.slice(from.length), updatedAt: now() });
+    }
+    await touchProject(projectId);
+  });
+  return to;
+}
+
 /** Deletes a file, or a folder and everything inside it. Returns the deleted paths. */
 export async function deleteEntry(projectId: string, path: string) {
   let deleted: string[] = [];
