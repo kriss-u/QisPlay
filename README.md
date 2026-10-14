@@ -42,6 +42,10 @@ npm run build:wasm # rebuild the qiskit / qiskit-aer wheels (rarely needed)
   importable. Files the script writes are saved back into the project. Plots go to a
   **Figures** tab (with a count, a PNG download per figure, and an automatic switch
   after a successful run that drew something).
+- **GUI windows:** pages opened with pywebview's API show in a dialog and keep
+  calling into Python after the script ends. qisdebug's `debug.show()` opens its
+  timeline viewer this way. A `webview` stand-in (`src/python/webview.py`) supports
+  `html=` windows only.
 - **Responsive:**
   - **Phones (under 768 px):** the explorer becomes a drawer (☰), the editor and
     output stack vertically with a draggable divider, and header extras move into a
@@ -206,6 +210,7 @@ src/App.tsx                    layout, commands (shortcuts + palette), run/conso
 src/app/                       brand, color mode, editor themes, rainbow brackets, shortcuts
 src/python/pyodide.worker.ts   Python runtime: boot, packages, run / console / completion
 src/python/bootstrap.py        runner: project sync, tracebacks, figures, console, Jedi
+src/python/webview.py          pywebview stand-in: windows open in PyWindowDialog
 src/python/usePython.ts        React hook owning the worker
 src/workspace/                 IndexedDB (Dexie), file ops, zip archives, background save
 src/components/                explorer, tabs, editor, console, palette, dialogs

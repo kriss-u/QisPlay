@@ -44,7 +44,9 @@ import traceback
 
 
 def _no_input(prompt=""):
-    raise RuntimeError(
+    # EOFError, like Python with no stdin attached, so libraries that read input
+    # in a loop (e.g. qisdebug's show()) stop cleanly instead of crashing.
+    raise EOFError(
         "input() is not available: this runner executes scripts, it is not an interactive shell"
     )
 
@@ -275,6 +277,7 @@ _INDEX_MODULES = [
     "qiskit_algorithms",
     "qiskit_algorithms.optimizers",
     "qiskit_algorithms.minimum_eigensolvers",
+    "qisdebug",
 ]
 
 # Conventional aliases: typing the alias offers the import.

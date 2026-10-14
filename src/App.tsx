@@ -45,6 +45,7 @@ import { FileExplorer } from "./components/FileExplorer";
 import { Logo } from "./components/Logo";
 import { OutputTerminal, type OutputTerminalHandle } from "./components/OutputTerminal";
 import { ProjectMenu } from "./components/ProjectMenu";
+import { PyWindowDialog } from "./components/PyWindowDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ShortcutsDialog } from "./components/ShortcutsDialog";
 import { Walkthrough, type WalkthroughHandle } from "./components/Walkthrough";
@@ -721,6 +722,7 @@ export default function App() {
         </Portal>
       </Dialog.Root>
       <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
+      <PyWindowDialog window={py.pyWindow} call={py.callWindow} onClose={py.closeWindow} />
       <Walkthrough ref={walkthrough} ready={ws.loaded} />
       <ShortcutsDialog open={showShortcuts} onClose={() => setShowShortcuts(false)} commands={commands} />
     </Flex>

@@ -20,6 +20,9 @@ export interface RunResult {
 
 type Completeness = "complete" | "incomplete" | "invalid";
 
+/** A page a script opened with pywebview's API (e.g. qisdebug's `debug.show()`). */
+export type PyWindow = Omit<Extract<FromWorker, { type: "window-open" }>, "type">;
+
 const SIGINT = 2;
 const REQUEST_TIMEOUT_MS = 4000;
 // The first completion builds the auto-import index (imports qiskit etc.).
@@ -32,6 +35,8 @@ export function usePython(sink: OutputSink) {
   const [missing, setMissing] = useState<string[]>([]);
   const [background, setBackground] = useState<string[]>([]);
   const [figures, setFigures] = useState<string[]>([]);
+  const [pyWindow, setPyWindow] = useState<PyWindow | null>(null);
+  const pyWindowRef = useRef<PyWindow | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
   const interruptRef = useRef<Uint8Array | null>(null);
@@ -39,6 +44,8 @@ export function usePython(sink: OutputSink) {
   const pendingRun = useRef<{ id: number; figures: number; resolve(r: RunResult | null): void } | null>(null);
   // Small request/response calls (completions, is-complete) keyed by id.
   const pending = useRef(new Map<number, (value: unknown) => void>());
+  // Window api calls: no timeout, they wait while a script runs.
+  const windowCalls = useRef(new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>());
   const stateRef = useRef(state);
   const sinkRef = useRef(sink);
   useEffect(() => {
@@ -54,6 +61,10 @@ export function usePython(sink: OutputSink) {
     pendingRun.current = null;
     for (const resolve of pending.current.values()) resolve(undefined);
     pending.current.clear();
+    for (const call of windowCalls.current.values()) call.reject(new Error("Python restarted"));
+    windowCalls.current.clear();
+    pyWindowRef.current = null;
+    setPyWindow(null);
 
     const worker = new PyodideWorker();
     workerRef.current = worker;
@@ -127,6 +138,23 @@ export function usePython(sink: OutputSink) {
           pending.current.get(msg.id)?.(msg.status);
           pending.current.delete(msg.id);
           break;
+        case "window-open": {
+          const { type: _, ...win } = msg;
+          // One window at a time: a new one replaces (and frees) the last.
+          const old = pyWindowRef.current;
+          if (old) worker.postMessage({ type: "window-close", window: old.window } satisfies ToWorker);
+          pyWindowRef.current = win;
+          setPyWindow(win);
+          break;
+        }
+        case "window-result": {
+          const call = windowCalls.current.get(msg.id);
+          windowCalls.current.delete(msg.id);
+          const reply = JSON.parse(msg.reply) as { result?: unknown; error?: string };
+          if (reply.error !== undefined) call?.reject(new Error(reply.error));
+          else call?.resolve(reply.result);
+          break;
+        }
       }
     };
     worker.postMessage({ type: "init", interruptBuffer } satisfies ToWorker);
@@ -212,6 +240,24 @@ export function usePython(sink: OutputSink) {
     [],
   );
 
+  /** Calls the open window's Python js_api; queued behind a running script. */
+  const callWindow = useCallback((window: number, method: string, args: unknown[]) => {
+    const worker = workerRef.current;
+    if (!worker) return Promise.reject(new Error("Python isn't running"));
+    const id = ++nextId.current;
+    return new Promise<unknown>((resolve, reject) => {
+      windowCalls.current.set(id, { resolve, reject });
+      worker.postMessage({ type: "window-call", id, window, method, args: JSON.stringify(args) } satisfies ToWorker);
+    });
+  }, []);
+
+  const closeWindow = useCallback(() => {
+    const old = pyWindowRef.current;
+    if (old) workerRef.current?.postMessage({ type: "window-close", window: old.window } satisfies ToWorker);
+    pyWindowRef.current = null;
+    setPyWindow(null);
+  }, []);
+
   return {
     state,
     status,
@@ -221,6 +267,9 @@ export function usePython(sink: OutputSink) {
     loadingPackages: background.filter((name) => !(name in packages)),
     figures,
     setFigures,
+    pyWindow,
+    callWindow,
+    closeWindow,
     run,
     runConsole,
     resetConsole,

@@ -26,7 +26,10 @@ export type ToWorker =
   | { type: "console-reset" }
   | { type: "sync"; files: ProjectFiles }
   | { type: "is-complete"; id: number; source: string }
-  | { type: "complete"; id: number; code: string; line: number; column: number; entry: string };
+  | { type: "complete"; id: number; code: string; line: number; column: number; entry: string }
+  // A page opened through the `webview` stand-in calls its Python js_api.
+  | { type: "window-call"; id: number; window: number; method: string; args: string }
+  | { type: "window-close"; window: number };
 
 export type FromWorker =
   | { type: "status"; text: string }
@@ -48,4 +51,8 @@ export type FromWorker =
       changed: Record<string, string | Uint8Array>;
     }
   | { type: "completions"; id: number; items: Completion[] }
-  | { type: "is-complete"; id: number; status: "complete" | "incomplete" | "invalid" };
+  | { type: "is-complete"; id: number; status: "complete" | "incomplete" | "invalid" }
+  // pywebview-style window: html with `window.pywebview.api.<methods>` calling Python.
+  | { type: "window-open"; window: number; title: string; html: string; width: number; height: number; methods: string[] }
+  /** JSON: {"result": …} or {"error": "…"}. */
+  | { type: "window-result"; id: number; reply: string };

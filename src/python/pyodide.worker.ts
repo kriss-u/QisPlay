@@ -1,10 +1,12 @@
 // Hosts the Pyodide (CPython -> WebAssembly) runtime off the UI thread.
 // The worker only executes project files sent from the editor: there is no
-// REPL and stdin is disabled, so the terminal is output-only.
+// REPL and stdin is disabled, so the terminal is output-only. Pages opened with
+// pywebview's API (webview.py) show in a dialog and call back in here.
 import type { PyodideInterface } from "pyodide";
 import type { PyProxy } from "pyodide/ffi";
 import type { Completion, FromWorker, ProjectFiles, Target, ToWorker } from "./protocol";
 import bootstrap from "./bootstrap.py?raw";
+import webviewShim from "./webview.py?raw";
 
 // The app is type-checked against the DOM lib, so describe the worker scope locally.
 const ctx = self as unknown as {
@@ -47,17 +49,25 @@ const REPORTED = ["numpy", "scipy", "matplotlib", "sympy", "rustworkx", ...LOCAL
 // Installed in the background once Python is ready, so they don't delay
 // startup. A run whose code uses one (`uses`) waits until it's in. `pyodide`
 // ones ship with Pyodide; the rest come from PyPI.
-const BACKGROUND: { name: string; uses: RegExp; pyodide?: boolean }[] = [
+/**
+ * `pyodide`: ships with the runtime. `needs`: install from PyPI without its
+ * declared dependencies, loading just these runtime packages first.
+ */
+const BACKGROUND: { name: string; uses: RegExp; pyodide?: boolean; needs?: string[] }[] = [
   { name: "qiskit-algorithms", uses: /\bqiskit_algorithms\b/ }, // VQE, QAOA, Grover, optimizers
   // Only qasm3.load/loads need it; qasm3.dumps and loads_experimental are built in.
   { name: "qiskit-qasm3-import", uses: /\bqasm3\.loads?\b|\bqiskit_qasm3_import\b/ },
   { name: "pandas", uses: /\bpandas\b/, pyodide: true },
+  // Its terminal viewer (textual, typer) can't run here; timelines, summary()
+  // export() and diff() only need pydantic, and rich prints the CLI frames.
+  { name: "qisdebug", uses: /\bqisdebug\b/, needs: ["pydantic", "rich"] },
 ];
 const installed = new Set<string>();
 let background: Promise<void> = Promise.resolve();
 
 let py: PyodideInterface | undefined;
 let runner: PyProxy | undefined;
+let webview: PyProxy | undefined; // the pywebview stand-in (webview.py)
 let interrupt: Uint8Array | undefined;
 // Output produced right now belongs to a script run or to console input.
 let target: Target = "run";
@@ -122,6 +132,7 @@ async function init(buffer?: SharedArrayBuffer) {
   status("Almost ready…");
   py.FS.mkdirTree("/opt/qisplay");
   py.FS.writeFile("/opt/qisplay/_runner.py", bootstrap);
+  py.FS.writeFile("/opt/qisplay/webview.py", webviewShim);
   py.runPython(`
 import sys
 sys.path.insert(0, "/opt/qisplay")
@@ -129,6 +140,11 @@ import _runner
 `);
   runner = py.globals.get("_runner") as PyProxy;
   runner._set_figure_sink((png: string) => post({ type: "figure", png, target }));
+  webview = py.pyimport("webview") as PyProxy;
+  webview._set_sink((window: number, title: string, html: string, width: number, height: number, methods: PyProxy) => {
+    post({ type: "window-open", window, title: String(title), html, width, height, methods: methods.toJs() as string[] });
+    methods.destroy();
+  });
 
   const all = versions(REPORTED);
   const packages: Record<string, string> = {
@@ -166,14 +182,19 @@ def _v(n):
  * the user's output, so its packages go through loadPackage with messages off.
  */
 async function install(names: string[]) {
-  const fromPyodide = names.filter((n) => BACKGROUND.some((p) => p.name === n && p.pyodide));
+  const spec = (n: string) => BACKGROUND.find((p) => p.name === n);
+  const fromPyodide = names.filter((n) => spec(n)?.pyodide);
   const fromPypi = names.filter((n) => !fromPyodide.includes(n));
+  const withDeps = fromPypi.filter((n) => !spec(n)?.needs);
+  const noDeps = fromPypi.filter((n) => spec(n)?.needs);
+  const runtime = [...fromPyodide, ...noDeps.flatMap((n) => spec(n)!.needs!)];
   const quiet = { messageCallback: () => {}, errorCallback: () => {} };
-  if (fromPyodide.length) await py!.loadPackage(fromPyodide, quiet);
+  if (runtime.length) await py!.loadPackage(runtime, quiet);
   if (fromPypi.length) {
     const micropip = py!.pyimport("micropip");
     try {
-      await micropip.install.callKwargs(fromPypi, { verbose: false });
+      if (withDeps.length) await micropip.install.callKwargs(withDeps, { verbose: false });
+      if (noDeps.length) await micropip.install.callKwargs(noDeps, { deps: false, verbose: false });
     } finally {
       micropip.destroy();
     }
@@ -296,5 +317,15 @@ ctx.onmessage = async (event: MessageEvent<ToWorker>) => {
     post({ type: "is-complete", id: msg.id, status });
   } else if (msg.type === "complete") {
     complete(msg.id, msg.code, msg.line, msg.column, msg.entry);
+  } else if (msg.type === "window-call") {
+    let reply: string;
+    try {
+      reply = webview!._call(msg.window, msg.method, msg.args) as string;
+    } catch (err) {
+      reply = JSON.stringify({ error: String(err) });
+    }
+    post({ type: "window-result", id: msg.id, reply });
+  } else if (msg.type === "window-close") {
+    webview?._close(msg.window);
   }
 };
