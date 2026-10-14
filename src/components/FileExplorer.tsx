@@ -3,9 +3,11 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEven
 import { LuBookOpen, LuChevronDown, LuChevronRight, LuEllipsis, LuFilePlus, LuFolderPlus } from "react-icons/lu";
 import { EXAMPLES } from "../examples";
 import type { FileEntry } from "../workspace/db";
-import { formatKeys, isMac, matches } from "../app/shortcuts";
+import { isMac, matches, type Keys } from "../app/shortcuts";
 import { basename, dirname, isInside } from "../workspace/paths";
+import { ContextMenu, MenuItems, type MenuEntry } from "./ContextMenu";
 import { FileIcon } from "./FileIcon";
+import { showError } from "./toast";
 import type { Workspace } from "../workspace/useWorkspace";
 import { useFileActions } from "./useFileActions";
 
@@ -32,6 +34,9 @@ function buildTree(files: FileEntry[]): Node[] {
   sort(roots);
   return roots;
 }
+
+// VS Code's explorer keys: Delete, or ⌘⌫ on macOS.
+const DELETE_KEYS: Keys = { mac: "Mod+Backspace", other: "Delete" };
 
 /** Hold to copy instead of move while dragging, as in VS Code. */
 const copyModifier = (e: DragEvent) => (isMac ? e.altKey : e.ctrlKey);
@@ -79,15 +84,56 @@ export function FileExplorer({ ws, onOpenFile }: { ws: Workspace; onOpenFile?: (
     }
   }
 
+  /** The menu for a row; `undefined` is the empty space below the rows (the project root). */
+  const menuFor = (entry: FileEntry | undefined): MenuEntry[] => {
+    const paste: MenuEntry = { value: "paste", label: "Paste", keys: "Mod+v", disabled: !clip };
+    const create: MenuEntry[] = [
+      { value: "new-file", label: "New file…" },
+      { value: "new-dir", label: "New folder…" },
+      null,
+    ];
+    if (!entry) return [...create, paste];
+    return [
+      ...(entry.kind === "dir" ? create : []),
+      { value: "cut", label: "Cut", keys: "Mod+x" },
+      { value: "copy", label: "Copy", keys: "Mod+c" },
+      paste,
+      null,
+      { value: "copy-path", label: "Copy relative path" },
+      null,
+      { value: "rename", label: "Rename…", keys: "F2" },
+      { value: "delete", label: "Delete", keys: DELETE_KEYS, danger: true },
+    ];
+  };
+
+  function act(value: string, entry: FileEntry | undefined) {
+    const parent = entry?.kind === "dir" ? entry.path : "";
+    if (value === "new-file") void create(parent, "file");
+    else if (value === "new-dir") void create(parent, "dir");
+    else if (value === "paste") void paste(entry);
+    else if (!entry) return;
+    else if (value === "cut") setClip({ path: entry.path, cut: true });
+    else if (value === "copy") setClip({ path: entry.path, cut: false });
+    else if (value === "copy-path") navigator.clipboard.writeText(entry.path).catch(showError);
+    else if (value === "rename") void rename(entry);
+    else if (value === "delete") void remove(entry);
+  }
+
   function onKeyDown(e: KeyboardEvent) {
     const entry = current ? ws.fileMap.get(current) : undefined;
-    if (matches("Mod+c", e.nativeEvent) && entry) setClip({ path: entry.path, cut: false });
-    else if (matches("Mod+x", e.nativeEvent) && entry) setClip({ path: entry.path, cut: true });
-    else if (matches("Mod+v", e.nativeEvent) && clip) void paste(entry);
+    const key = e.nativeEvent;
+    if (matches("Mod+c", key) && entry) act("copy", entry);
+    else if (matches("Mod+x", key) && entry) act("cut", entry);
+    else if (matches("Mod+v", key) && clip) act("paste", entry);
+    else if (matches("F2", key) && entry) act("rename", entry);
+    else if (matches(DELETE_KEYS, key) && entry) act("delete", entry);
     else if (e.key === "Escape" && clip?.cut) setClip(null);
     else return;
     e.preventDefault();
   }
+
+  // What the open context menu is for (set when it opens).
+  const menuEntry = useRef<FileEntry | undefined>(undefined);
 
   // Drag and drop: the dragged path, and the folder it would land in ("" = root).
   const dragged = useRef<string | null>(null);
@@ -146,6 +192,7 @@ export function FileExplorer({ ws, onOpenFile }: { ws: Workspace; onOpenFile?: (
         <Flex
           className="group"
           data-current={selected || undefined}
+          data-path={entry.path}
           draggable
           onDragStart={(e) => {
             dragged.current = entry.path;
@@ -185,15 +232,7 @@ export function FileExplorer({ ws, onOpenFile }: { ws: Workspace; onOpenFile?: (
           </Text>
           <Menu.Root
             positioning={{ placement: "bottom-end" }}
-            onSelect={({ value }) => {
-              if (value === "new-file") void create(entry.path, "file");
-              if (value === "new-dir") void create(entry.path, "dir");
-              if (value === "cut") setClip({ path: entry.path, cut: true });
-              if (value === "copy") setClip({ path: entry.path, cut: false });
-              if (value === "paste") void paste(entry);
-              if (value === "rename") void rename(entry);
-              if (value === "delete") void remove(entry);
-            }}
+            onSelect={({ value }) => act(value, entry)}
           >
             <Menu.Trigger asChild>
               <IconButton
@@ -214,28 +253,8 @@ export function FileExplorer({ ws, onOpenFile }: { ws: Workspace; onOpenFile?: (
             <Portal>
               <Menu.Positioner>
                 {/* Portaled, but React events still bubble to the row's onClick. */}
-                <Menu.Content minW="10rem" onClick={(e) => e.stopPropagation()}>
-                  {isDir && (
-                    <>
-                      <Menu.Item value="new-file">New file…</Menu.Item>
-                      <Menu.Item value="new-dir">New folder…</Menu.Item>
-                      <Menu.Separator />
-                    </>
-                  )}
-                  <Menu.Item value="cut">
-                    Cut<Menu.ItemCommand>{formatKeys("Mod+x")}</Menu.ItemCommand>
-                  </Menu.Item>
-                  <Menu.Item value="copy">
-                    Copy<Menu.ItemCommand>{formatKeys("Mod+c")}</Menu.ItemCommand>
-                  </Menu.Item>
-                  <Menu.Item value="paste" disabled={!clip}>
-                    Paste<Menu.ItemCommand>{formatKeys("Mod+v")}</Menu.ItemCommand>
-                  </Menu.Item>
-                  <Menu.Separator />
-                  <Menu.Item value="rename">Rename…</Menu.Item>
-                  <Menu.Item value="delete" color="fg.error" _hover={{ bg: "bg.error", color: "fg.error" }}>
-                    Delete
-                  </Menu.Item>
+                <Menu.Content minW="12rem" onClick={(e) => e.stopPropagation()}>
+                  <MenuItems items={menuFor(entry)} />
                 </Menu.Content>
               </Menu.Positioner>
             </Portal>
@@ -284,31 +303,42 @@ export function FileExplorer({ ws, onOpenFile }: { ws: Workspace; onOpenFile?: (
           </Portal>
         </Menu.Root>
       </Flex>
-      <Box
-        role="tree"
-        aria-label="Project files"
-        tabIndex={0}
-        flex="1"
-        overflowY="auto"
-        py="1"
-        bg={dropTarget === "" ? "bg.drop" : undefined}
-        outline="none"
-        // While the list has focus, outline the row that cut/copy/paste act on.
-        css={{ "&:focus [data-current]": { outline: "1px solid", outlineColor: "blue.focusRing", outlineOffset: "-1px" } }}
-        onKeyDown={onKeyDown}
-        onDragOver={dragOver("")}
-        onDrop={drop("")}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as globalThis.Node | null)) setDropTarget(null);
+      <ContextMenu
+        items={(e) => {
+          const path = (e.target as HTMLElement).closest<HTMLElement>("[data-path]")?.dataset.path;
+          const entry = path ? ws.fileMap.get(path) : undefined;
+          if (entry) pick(entry.path); // right-click selects the row, as in VS Code
+          menuEntry.current = entry;
+          return menuFor(entry);
         }}
+        onSelect={(value) => act(value, menuEntry.current)}
       >
-        {tree.map((n) => renderNode(n, 0))}
-        {ws.loaded && tree.length === 0 && (
-          <Text px="4" py="3" fontSize="sm" color="fg.muted">
-            No files yet. Create one with the buttons above.
-          </Text>
-        )}
-      </Box>
+        <Box
+          role="tree"
+          aria-label="Project files"
+          tabIndex={0}
+          flex="1"
+          overflowY="auto"
+          py="1"
+          bg={dropTarget === "" ? "bg.drop" : undefined}
+          outline="none"
+          // While the list has focus, outline the row that cut/copy/paste act on.
+          css={{ "&:focus [data-current]": { outline: "1px solid", outlineColor: "blue.focusRing", outlineOffset: "-1px" } }}
+          onKeyDown={onKeyDown}
+          onDragOver={dragOver("")}
+          onDrop={drop("")}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as globalThis.Node | null)) setDropTarget(null);
+          }}
+        >
+          {tree.map((n) => renderNode(n, 0))}
+          {ws.loaded && tree.length === 0 && (
+            <Text px="4" py="3" fontSize="sm" color="fg.muted">
+              No files yet. Create one with the buttons above.
+            </Text>
+          )}
+        </Box>
+      </ContextMenu>
     </Flex>
   );
 }

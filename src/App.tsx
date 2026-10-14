@@ -348,7 +348,13 @@ export default function App() {
   );
 
   const editorPane = (
-    <EditorPane ws={ws} onRun={() => void onRun()} onRunSelection={sendToConsole} complete={py.complete} />
+    <EditorPane
+      ws={ws}
+      onRun={() => void onRun()}
+      onRunSelection={sendToConsole}
+      onCommandPalette={() => setPalette("commands")}
+      complete={py.complete}
+    />
   );
   const outputPane = (
     <Flex direction="column" h="100%" minW="0">
