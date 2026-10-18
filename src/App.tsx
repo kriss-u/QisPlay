@@ -472,7 +472,7 @@ export default function App() {
     <Flex direction="column" h="100dvh" bg="bg" color="fg">
       <Flex as="header" align="center" gap={{ base: "1.5", md: "3" }} px={{ base: "2", md: "3" }} py="2" borderBottomWidth="1px" bg="bg.titlebar">
         {compact && (
-          <IconButton size="sm" variant="ghost" aria-label="Show files" title="Files" onClick={() => setDrawerOpen(true)}>
+          <IconButton size="sm" variant="ghost" aria-label="Show files" title="Files" data-tour="files" onClick={() => setDrawerOpen(true)}>
             <LuMenu />
           </IconButton>
         )}

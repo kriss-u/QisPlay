@@ -171,6 +171,21 @@ covers authoring and releasing.
   repo at that ref for the rest of the tab's session. The parameters are removed from
   the address bar once read.
 
+## Walkthrough
+
+A first visit gets a guided tour (`src/components/Walkthrough.tsx`, steps in
+`src/components/walkthroughSteps.ts`). Each step has a `since` revision, and the
+browser remembers the newest revision it finished (`qisplay:walkthrough-done` in
+localStorage). A returning visitor sees only the steps with a newer `since`, as a
+"What's new" tour, so someone who missed several releases sees all of them at once.
+"Start walkthrough" in the command palette always replays the full tour.
+
+**Shipping a user-facing feature:** add a step for it, or edit the step for the area
+it changed, and set its `since` to the highest one plus one. `news` can hold a
+shorter "what changed" text for the What's new tour. Steps spotlight elements marked
+`data-tour="<id>"`; point at something that is always on screen (a menu's button,
+not an item inside it), or leave out `placement` for a centered card.
+
 ## Installed Python packages
 
 | Package | Source |
@@ -245,7 +260,7 @@ src/python/webview.py          pywebview stand-in: windows open in PyWindowDialo
 src/python/usePython.ts        React hook owning the worker
 src/workspace/                 IndexedDB (Dexie), file ops, zip archives, background save
 src/templates/                 template catalog (jsDelivr) and project creation from it
-src/components/                explorer, tabs, editor, console, palette, dialogs
+src/components/                explorer, tabs, editor, console, palette, dialogs, walkthrough
 public/sw.js                   service worker that finishes saves after the tab closes
 public/_headers                Cloudflare Pages headers (COOP/COEP, caching)
 vite-seo.ts                    SEO plugin: meta tags, JSON-LD, sitemap, robots, GA4
