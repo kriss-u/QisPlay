@@ -1,5 +1,5 @@
 // Project and file operations on top of IndexedDB. All writes go through here.
-import { db, type FileContent, type Project } from "./db";
+import { db, type FileContent, type Project, type TemplateOrigin } from "./db";
 import { ancestors, basename, isInside, join, validateName } from "./paths";
 
 export class WorkspaceError extends Error {}
@@ -10,10 +10,14 @@ async function touchProject(projectId: string) {
   await db.projects.update(projectId, { updatedAt: now() });
 }
 
-export async function createProject(name: string, files: Record<string, string> = {}) {
+export async function createProject(
+  name: string,
+  files: Record<string, FileContent> = {},
+  template?: TemplateOrigin,
+) {
   const error = validateName(name);
   if (error) throw new WorkspaceError(error);
-  const project: Project = { id: crypto.randomUUID(), name, createdAt: now(), updatedAt: now() };
+  const project: Project = { id: crypto.randomUUID(), name, createdAt: now(), updatedAt: now(), template };
   await db.transaction("rw", db.projects, db.files, async () => {
     await db.projects.add(project);
     for (const [path, content] of Object.entries(files)) {
@@ -27,6 +31,22 @@ export async function renameProject(projectId: string, name: string) {
   const error = validateName(name);
   if (error) throw new WorkspaceError(error);
   await db.projects.update(projectId, { name, updatedAt: now() });
+}
+
+/** `name`, or "name (2)", "name (3)", ... if a project already has it. */
+export async function uniqueProjectName(name: string) {
+  const taken = new Set((await db.projects.toArray()).map((p) => p.name.toLowerCase()));
+  if (!taken.has(name.toLowerCase())) return name;
+  for (let i = 2; ; i++) {
+    const candidate = `${name} (${i})`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
+/** Hides the "template updated" notice for this project until a newer version. */
+export async function dismissTemplateUpdate(projectId: string, version: number) {
+  const project = await db.projects.get(projectId);
+  if (project?.template) await db.projects.update(projectId, { template: { ...project.template, dismissed: version } });
 }
 
 export async function deleteProject(projectId: string) {

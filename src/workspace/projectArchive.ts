@@ -3,8 +3,9 @@
 // info, open tabs, per-file details), so an export can be restored faithfully.
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { APP_NAME } from "../app/brand";
-import { db, getSetting, setSetting, type FileContent } from "./db";
+import { db, getSetting, setSetting, type FileContent, type TemplateOrigin } from "./db";
 import { ancestors, validateName } from "./paths";
+import { uniqueProjectName } from "./workspace";
 
 export const MANIFEST_PATH = ".qisplay/project.json";
 const FORMAT = "qisplay-project";
@@ -17,7 +18,7 @@ export interface ProjectManifest {
   version: number;
   app: string;
   exportedAt: string;
-  project: { name: string; createdAt: number; updatedAt: number };
+  project: { name: string; createdAt: number; updatedAt: number; template?: TemplateOrigin };
   workspace: { openTabs: string[]; activeFile: string | null };
   files: { path: string; kind: "file" | "dir"; binary?: boolean; updatedAt: number }[];
 }
@@ -38,7 +39,14 @@ export async function exportProjectZip(projectId: string): Promise<{ blob: Blob;
     version: FORMAT_VERSION,
     app: APP_NAME,
     exportedAt: new Date().toISOString(),
-    project: { name: project.name, createdAt: project.createdAt, updatedAt: project.updatedAt },
+    project: {
+      name: project.name,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+      ...(project.template
+        ? { template: { id: project.template.id, version: project.template.version, ref: project.template.ref } }
+        : {}),
+    },
     workspace: { openTabs: tabs.tabs, activeFile: tabs.active },
     files: files.map((f) => ({
       path: f.path,
@@ -75,6 +83,11 @@ function parseManifest(bytes: Uint8Array | undefined): ProjectManifest | null {
   }
 }
 
+function validOrigin(t: unknown): TemplateOrigin | undefined {
+  const o = t as TemplateOrigin | undefined;
+  return o && typeof o.id === "string" && typeof o.version === "number" && typeof o.ref === "string" ? o : undefined;
+}
+
 /** Normalizes a zip entry path; null if it's unsafe or unusable. */
 function cleanPath(raw: string): string | null {
   const parts = raw.replace(/\\/g, "/").split("/").filter((p) => p !== "" && p !== ".");
@@ -87,15 +100,6 @@ function decodeText(bytes: Uint8Array): string | null {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
     return null;
-  }
-}
-
-async function uniqueProjectName(name: string) {
-  const taken = new Set((await db.projects.toArray()).map((p) => p.name.toLowerCase()));
-  if (!taken.has(name.toLowerCase())) return name;
-  for (let i = 2; ; i++) {
-    const candidate = `${name} (${i})`;
-    if (!taken.has(candidate.toLowerCase())) return candidate;
   }
 }
 
@@ -168,6 +172,7 @@ export async function importProjectZip(file: File): Promise<ImportResult> {
       name,
       createdAt: manifest?.project.createdAt ?? now,
       updatedAt: now,
+      template: validOrigin(manifest?.project.template),
     });
     for (const path of dirs) {
       await db.files.put({ projectId, path, kind: "dir", content: "", updatedAt: updatedAt.get(path) ?? now });

@@ -1,5 +1,14 @@
 import { Button, Menu, Portal, Text } from "@chakra-ui/react";
-import { LuCheck, LuChevronDown, LuDownload, LuFolderPlus, LuPencil, LuTrash2, LuUpload } from "react-icons/lu";
+import {
+  LuCheck,
+  LuChevronDown,
+  LuDownload,
+  LuFolderPlus,
+  LuLayoutTemplate,
+  LuPencil,
+  LuTrash2,
+  LuUpload,
+} from "react-icons/lu";
 import { validateName } from "../workspace/paths";
 import type { Workspace } from "../workspace/useWorkspace";
 import { exportProject, importProject } from "./projectArchiveActions";
@@ -7,7 +16,7 @@ import { createProject, deleteProject, renameProject } from "../workspace/worksp
 import { useDialogs } from "./dialogContext";
 import { showError } from "./toast";
 
-export function ProjectMenu({ ws }: { ws: Workspace }) {
+export function ProjectMenu({ ws, onTemplates }: { ws: Workspace; onTemplates(): void }) {
   const dialogs = useDialogs();
   const current = ws.project;
 
@@ -29,6 +38,8 @@ export function ProjectMenu({ ws }: { ws: Workspace }) {
         const p = await createProject(name, { "main.py": 'print("Hello from Python!")\n' });
         await ws.openProject(p.id);
         ws.openFile("main.py");
+      } else if (value === "template") {
+        onTemplates();
       } else if (value === "rename" && current) {
         const name = await dialogs.prompt({
           title: "Rename project",
@@ -94,6 +105,9 @@ export function ProjectMenu({ ws }: { ws: Workspace }) {
             <Menu.Separator />
             <Menu.Item value="new">
               <LuFolderPlus /> New project…
+            </Menu.Item>
+            <Menu.Item value="template">
+              <LuLayoutTemplate /> New project from template…
             </Menu.Item>
             <Menu.Item value="rename" disabled={!current}>
               <LuPencil /> Rename project…

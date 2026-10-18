@@ -23,6 +23,9 @@ npm run build:wasm # rebuild the qiskit / qiskit-aer wheels (rarely needed)
 - **Projects:** multiple projects stored in IndexedDB (via Dexie). You can create,
   rename, switch and delete them, and download or open them as `.zip` (see
   [Project archives](#project-archives)).
+- **Templates:** start a project from a template, such as a course lab. Templates
+  come from a public GitHub repo, with no account or server needed (see
+  [Templates](#templates)).
 - **Explorer:** files and folders with Material Icon Theme icons. Open files appear as
   tabs, and edits autosave.
 - **Saving on close:** unsaved edits survive the tab closing. On `pagehide` they're
@@ -110,6 +113,8 @@ The site is fully static. In Pages, use these settings:
 - **Environment variables** (see `.env.example`; set them in Pages for production):
   - `SITE_URL`: canonical origin. Defaults to `DEFAULT_SITE_URL` in `brand.ts`
     (https://qisplay.nepcodex.com).
+  - `VITE_TEMPLATES_REPO`: GitHub `owner/repo` that templates come from. Defaults to
+    `kriss-u/qisplay-templates`.
   - `VITE_GA_ID`: Google Analytics 4 ID. Analytics is only injected in production
     builds when it's set, and skipped for visitors with Do Not Track or Global
     Privacy Control. It uses gtag.js directly, not Tag Manager: GTM can load
@@ -124,7 +129,7 @@ manifest carrying the metadata that lives in IndexedDB:
 {
   "format": "qisplay-project",
   "version": 1,
-  "project": { "name": "…", "createdAt": 0, "updatedAt": 0 },
+  "project": { "name": "…", "createdAt": 0, "updatedAt": 0, "template": { "id": "…", "version": 1, "ref": "1.0.0" } },
   "workspace": { "openTabs": ["main.py"], "activeFile": "main.py" },
   "files": [{ "path": "data.bin", "kind": "file", "binary": true, "updatedAt": 0 }]
 }
@@ -139,6 +144,32 @@ and timestamps:
 - **Skipped entries:** junk entries (`__MACOSX`, `.DS_Store`, `__pycache__`), unsafe
   paths and files over 20 MB are skipped.
 - **Name clashes:** these get a unique name, e.g. "Name (2)".
+- **Template origin:** `project.template` is only present for projects created from
+  a template. It survives a round trip, so update notices keep working.
+
+## Templates
+
+**Project menu → New project from template…** (also in the command palette) opens a
+gallery of starter projects from the
+[qisplay-templates](https://github.com/kriss-u/qisplay-templates) repo. Its README
+covers authoring and releasing.
+
+- **Source:** `src/templates/catalog.ts` asks jsDelivr's data API for the repo's
+  newest version tag, then fetches `index.json` at that tag from
+  `cdn.jsdelivr.net/gh/…` (CORS-enabled and immutable per tag). A template's files are
+  fetched when a project is created from it. If jsDelivr can't list the versions, the
+  newest tag comes from GitHub's tags API instead (60 requests/hour per IP); `main` is the
+  last resort.
+- **Origin:** the new project records `{ id, version, ref }` (`Project.template`).
+- **Updates:** when the catalog has a higher `version` for that template, the header
+  shows **Template updated**. It offers a fresh copy as a new project, leaving the
+  old one alone, or a per-version dismiss. Nothing is merged.
+- **Offline:** the last catalog is cached in IndexedDB settings and used when the
+  fetch fails.
+- **Links:** `?collection=<id>` opens the gallery filtered to a collection and
+  `?template=<id>` highlights one template. `?templates=<sha|branch>` previews the
+  repo at that ref for the rest of the tab's session. The parameters are removed from
+  the address bar once read.
 
 ## Installed Python packages
 
@@ -213,6 +244,7 @@ src/python/bootstrap.py        runner: project sync, tracebacks, figures, consol
 src/python/webview.py          pywebview stand-in: windows open in PyWindowDialog
 src/python/usePython.ts        React hook owning the worker
 src/workspace/                 IndexedDB (Dexie), file ops, zip archives, background save
+src/templates/                 template catalog (jsDelivr) and project creation from it
 src/components/                explorer, tabs, editor, console, palette, dialogs
 public/sw.js                   service worker that finishes saves after the tab closes
 public/_headers                Cloudflare Pages headers (COOP/COEP, caching)

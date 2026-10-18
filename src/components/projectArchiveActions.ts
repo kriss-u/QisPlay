@@ -1,3 +1,4 @@
+import { createFromTemplate, type Catalog, type TemplateInfo } from "../templates/catalog";
 import { downloadBlob } from "../workspace/workspace";
 import { exportProjectZip, importProjectZip, pickZipFile } from "../workspace/projectArchive";
 import type { Workspace } from "../workspace/useWorkspace";
@@ -12,6 +13,19 @@ export async function exportProject(ws: Workspace) {
     downloadBlob(blob, filename);
   } catch (err) {
     showError(err);
+  }
+}
+
+/** Create a project from a template and open it. Rethrows so callers can stay open on failure. */
+export async function openTemplate(ws: Workspace, catalog: Catalog, template: TemplateInfo) {
+  try {
+    await ws.flush();
+    const projectId = await createFromTemplate(catalog, template);
+    await ws.openProject(projectId);
+    toaster.create({ type: "success", title: `Created "${template.title}"` });
+  } catch (err) {
+    showError(err);
+    throw err;
   }
 }
 

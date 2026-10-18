@@ -56,8 +56,12 @@ import type { ProjectFiles } from "./python/protocol";
 import { usePython, type OutputSink, type RunResult } from "./python/usePython";
 import { isPython } from "./workspace/paths";
 import { useWorkspace } from "./workspace/useWorkspace";
-import { exportProject, importProject } from "./components/projectArchiveActions";
-import { writeFile } from "./workspace/workspace";
+import { exportProject, importProject, openTemplate } from "./components/projectArchiveActions";
+import { TemplateGallery, type GalleryFilter } from "./components/TemplateGallery";
+import { TemplateUpdateNotice } from "./components/TemplateUpdateNotice";
+import { availableUpdate, setOverrideRef } from "./templates/catalog";
+import { useCatalog } from "./templates/useCatalog";
+import { dismissTemplateUpdate, writeFile } from "./workspace/workspace";
 
 const STATE_COLOR = { loading: "yellow", ready: "green", running: "blue", error: "red" } as const;
 const DEFAULT_SIZES = [18, 46, 36];
@@ -68,6 +72,26 @@ const THEME_ICONS: Record<ColorModeSetting, React.ReactNode> = {
   dark: <LuMoon />,
   system: <LuMonitor />,
 };
+
+/**
+ * Links like ?collection=<id> or ?template=<id> open the template gallery;
+ * ?templates=<ref> previews the templates repo at a commit or branch. The
+ * parameters are removed from the address bar once read.
+ */
+function galleryFromUrl(): GalleryFilter | null {
+  const params = new URLSearchParams(location.search);
+  const ref = params.get("templates");
+  const collection = params.get("collection");
+  const template = params.get("template");
+  if (!ref && !collection && !template) return null;
+  if (ref) setOverrideRef(ref);
+  for (const key of ["templates", "collection", "template"]) params.delete(key);
+  const query = params.size ? `?${params}` : "";
+  history.replaceState(history.state, "", `${location.pathname}${query}${location.hash}`);
+  return { collection, template };
+}
+// Read once at startup (a useState initializer runs twice under StrictMode).
+const INITIAL_GALLERY = galleryFromUrl();
 
 export default function App() {
   const ws = useWorkspace();
@@ -97,6 +121,19 @@ export default function App() {
   const [palette, setPalette] = useState<"files" | "commands" | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [gallery, setGallery] = useState<GalleryFilter | null>(INITIAL_GALLERY);
+  // Fetch the catalog for the gallery, or to tell this project's template has an update.
+  const templates = useCatalog(gallery !== null || !!ws.project?.template);
+  const templateUpdate = availableUpdate(templates.catalog, ws.project?.template);
+
+  const openGallery = useCallback(
+    (filter: GalleryFilter = {}) => {
+      setGallery(filter);
+      templates.load();
+    },
+    [templates],
+  );
+
 
   const entry = ws.active && isPython(ws.active) ? ws.active : null;
   const canRun = py.state === "ready" && entry !== null;
@@ -243,6 +280,7 @@ export default function App() {
     },
     { id: "new-file", title: "New file…", keys: "Alt+n", run: () => void fileActions.create("", "file") },
     { id: "new-folder", title: "New folder…", run: () => void fileActions.create("", "dir") },
+    { id: "templates", title: "New project from template…", run: () => openGallery() },
     ...EXAMPLES.map((ex, i) => ({
       id: `example-${i}`,
       title: `Add example: ${ex.name}`,
@@ -444,7 +482,15 @@ export default function App() {
             {APP_NAME}
           </Text>
         </HStack>
-        <ProjectMenu ws={ws} />
+        <ProjectMenu ws={ws} onTemplates={() => openGallery()} />
+        {ws.project && templateUpdate && templates.catalog && (
+          <TemplateUpdateNotice
+            project={ws.project}
+            update={templateUpdate}
+            onOpenFresh={() => openTemplate(ws, templates.catalog!, templateUpdate)}
+            onDismiss={() => void dismissTemplateUpdate(ws.project!.id, templateUpdate.version)}
+          />
+        )}
 
         <HStack gap="2" data-tour="run">
           <Button
@@ -728,8 +774,20 @@ export default function App() {
         </Portal>
       </Dialog.Root>
       <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
+      <TemplateGallery
+        open={gallery !== null}
+        filter={gallery ?? {}}
+        templates={templates}
+        projects={ws.projects}
+        onCreate={async (t) => {
+          await openTemplate(ws, templates.catalog!, t);
+          setGallery(null);
+        }}
+        onClose={() => setGallery(null)}
+      />
       <PyWindowDialog window={py.pyWindow} call={py.callWindow} onClose={py.closeWindow} />
-      <Walkthrough ref={walkthrough} ready={ws.loaded} />
+      {/* A gallery opened from a link comes first; the tour waits until it closes. */}
+      <Walkthrough ref={walkthrough} ready={ws.loaded && gallery === null} />
       <ShortcutsDialog open={showShortcuts} onClose={() => setShowShortcuts(false)} commands={commands} />
     </Flex>
   );

@@ -7,6 +7,18 @@ export interface Project {
   name: string;
   createdAt: number;
   updatedAt: number;
+  /** Set when the project was created from a template (see src/templates/). */
+  template?: TemplateOrigin;
+}
+
+/** Which template, at which version, a project started from. */
+export interface TemplateOrigin {
+  id: string;
+  version: number;
+  /** The templates repo version (tag or commit) it was fetched from. */
+  ref: string;
+  /** An update notice the user dismissed, by template version. */
+  dismissed?: number;
 }
 
 /** Text files hold a string; files a script writes (e.g. PNGs) may be binary. */
