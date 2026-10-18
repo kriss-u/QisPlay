@@ -154,12 +154,12 @@ gallery of starter projects from the
 [qisplay-templates](https://github.com/kriss-u/qisplay-templates) repo. Its README
 covers authoring and releasing.
 
-- **Source:** `src/templates/catalog.ts` asks jsDelivr's data API for the repo's
-  newest version tag, then fetches `index.json` at that tag from
-  `cdn.jsdelivr.net/gh/…` (CORS-enabled and immutable per tag). A template's files are
-  fetched when a project is created from it. If jsDelivr can't list the versions, the
-  newest tag comes from GitHub's tags API instead (60 requests/hour per IP); `main` is the
-  last resort.
+- **Source:** `src/templates/catalog.ts` fetches `index.json` from
+  `cdn.jsdelivr.net/gh/…@latest`. jsDelivr resolves `@latest` to the newest version tag
+  and reports it in the `x-jsd-version` header, so a template's files are then fetched
+  at that exact (immutable) version when a project is created from it. The edge caches
+  `@latest` for up to 12 hours, and the templates repo's release workflow purges it.
+  jsDelivr's data API isn't used; it fails to list versions for this account.
 - **Origin:** the new project records `{ id, version, ref }` (`Project.template`).
 - **Updates:** when the catalog has a higher `version` for that template, the header
   shows **Template updated**. It offers a fresh copy as a new project, leaving the

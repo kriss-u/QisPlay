@@ -62,50 +62,26 @@ export function setOverrideRef(ref: string) {
   }
 }
 
-async function fetchJson(url: string) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-const SEMVER_TAG = /^v?(\d+)\.(\d+)\.(\d+)$/;
-
-/** The highest release tag (no prereleases) from GitHub, without the "v". */
-async function latestTagFromGitHub(): Promise<string | null> {
-  const tags: { name: string }[] = await fetchJson(`https://api.github.com/repos/${REPO}/tags?per_page=100`);
-  const versions = tags.flatMap((t) => {
-    const m = SEMVER_TAG.exec(t.name);
-    return m ? [m.slice(1, 4).map(Number)] : [];
-  });
-  versions.sort((a, b) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2]);
-  return versions[0]?.join(".") ?? null;
-}
-
 /**
- * The newest version tag. jsDelivr's lookup is cached and has no rate limit, so
- * it goes first; GitHub's API (60 requests/hour per IP) covers jsDelivr failing
- * to list versions. "main" only if neither finds a tag.
+ * index.json at the preview ref, or at `@latest`. jsDelivr resolves `@latest`
+ * to the newest version tag and names it in `x-jsd-version`, so one request
+ * gives both the catalog and the exact version to fetch its files at. Its edge
+ * caches `@latest` for up to 12 hours (the templates repo's release workflow
+ * purges it), and "no-cache" revalidates instead of trusting the browser's
+ * week-long copy.
  */
-async function latestRef(): Promise<string> {
-  try {
-    const res = await fetch(`https://data.jsdelivr.com/v1/packages/gh/${REPO}/resolved?specifier=latest`);
-    if (res.ok) {
-      const version = (await res.json()).version;
-      if (version) return version;
-    }
-  } catch {
-    // fall through to GitHub
-  }
-  try {
-    return (await latestTagFromGitHub()) ?? "main";
-  } catch {
-    return "main";
-  }
+async function fetchIndex(): Promise<{ ref: string; index: unknown }> {
+  const preview = overrideRef();
+  const res = await fetch(`${base(preview ?? "latest")}index.json`, { cache: "no-cache" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const ref = preview ?? res.headers.get("x-jsd-version");
+  if (!ref) throw new Error("the CDN didn't say which version it served");
+  return { ref, index: await res.json() };
 }
 
 async function fetchCatalog(): Promise<Catalog> {
-  const ref = overrideRef() ?? (await latestRef());
-  const index = await fetchJson(`${base(ref)}index.json`);
+  const { ref, index: raw } = await fetchIndex();
+  const index = raw as { schema?: number; collections?: TemplateCollection[]; templates?: TemplateInfo[] };
   if (index?.schema !== SCHEMA || !Array.isArray(index.templates)) {
     throw new Error("The template list is in a format this version doesn't understand. Reload the page to update.");
   }
