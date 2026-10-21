@@ -37,7 +37,7 @@ const PYPI_PACKAGES = [
   "rustworkx",
   "dill",
   "stevedore",
-  "typing-extensions",
+  "typing-extensions>=4.16", // PyPI's pydantic needs newer than Pyodide's 4.15
   "python-dateutil",
   "pylatexenc", // qiskit's matplotlib circuit drawer
 ];
@@ -50,17 +50,34 @@ const REPORTED = ["numpy", "scipy", "matplotlib", "sympy", "rustworkx", ...LOCAL
 // startup. A run whose code uses one (`uses`) waits until it's in. `pyodide`
 // ones ship with Pyodide; the rest come from PyPI.
 /**
- * `pyodide`: ships with the runtime. `needs`: install from PyPI without its
- * declared dependencies, loading just these runtime packages first.
+ * `pyodide`: ships with the runtime. `needs`: runtime packages to load first,
+ * quietly; list any that its PyPI install would otherwise pull from Pyodide.
+ * `nodeps`: install from PyPI without its declared dependencies. `pypi`:
+ * requirements to install from PyPI (with their dependencies) alongside it.
  */
-const BACKGROUND: { name: string; uses: RegExp; pyodide?: boolean; needs?: string[] }[] = [
+type Background = { name: string; uses: RegExp; pyodide?: boolean; needs?: string[]; nodeps?: boolean; pypi?: string[] };
+const BACKGROUND: Background[] = [
   { name: "qiskit-algorithms", uses: /\bqiskit_algorithms\b/ }, // VQE, QAOA, Grover, optimizers
   // Only qasm3.load/loads need it; qasm3.dumps and loads_experimental are built in.
   { name: "qiskit-qasm3-import", uses: /\bqasm3\.loads?\b|\bqiskit_qasm3_import\b/ },
   { name: "pandas", uses: /\bpandas\b/, pyodide: true },
+  // Fake backends and local-mode primitives work offline. IBM's cloud APIs
+  // send no CORS headers, so QiskitRuntimeService can't reach them from here.
+  {
+    name: "qiskit-ibm-runtime",
+    uses: /\bqiskit_ibm_runtime\b/,
+    needs: ["requests", "cryptography", "orjson", "annotated-types"],
+  },
   // Its terminal viewer (textual, typer) can't run here; timelines, summary()
   // export() and diff() only need pydantic, and rich prints the CLI frames.
-  { name: "qisdebug", uses: /\bqisdebug\b/, needs: ["pydantic", "rich"] },
+  // pydantic comes from PyPI: qiskit-ibm-runtime rejects Pyodide's 2.12.
+  {
+    name: "qisdebug",
+    uses: /\bqisdebug\b/,
+    needs: ["rich", "annotated-types"],
+    nodeps: true,
+    pypi: ["pydantic>=2.13"],
+  },
 ];
 const installed = new Set<string>();
 let background: Promise<void> = Promise.resolve();
@@ -185,9 +202,9 @@ async function install(names: string[]) {
   const spec = (n: string) => BACKGROUND.find((p) => p.name === n);
   const fromPyodide = names.filter((n) => spec(n)?.pyodide);
   const fromPypi = names.filter((n) => !fromPyodide.includes(n));
-  const withDeps = fromPypi.filter((n) => !spec(n)?.needs);
-  const noDeps = fromPypi.filter((n) => spec(n)?.needs);
-  const runtime = [...fromPyodide, ...noDeps.flatMap((n) => spec(n)!.needs!)];
+  const withDeps = [...fromPypi.filter((n) => !spec(n)?.nodeps), ...names.flatMap((n) => spec(n)?.pypi ?? [])];
+  const noDeps = fromPypi.filter((n) => spec(n)?.nodeps);
+  const runtime = [...fromPyodide, ...names.flatMap((n) => spec(n)?.needs ?? [])];
   const quiet = { messageCallback: () => {}, errorCallback: () => {} };
   if (runtime.length) await py!.loadPackage(runtime, quiet);
   if (fromPypi.length) {
@@ -203,6 +220,7 @@ async function install(names: string[]) {
   const failed = names.filter((n) => !found[n]);
   if (failed.length) throw new Error(`not available: ${failed.join(", ")}`);
   names.forEach((n) => installed.add(n));
+  if (names.includes("qiskit-ibm-runtime")) runner?._patch_ibm_runtime();
   runner?._invalidate_index(); // so auto-import offers their names
   post({ type: "installed", packages: found as Record<string, string> });
 }

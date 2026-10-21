@@ -73,6 +73,10 @@ npm run build:wasm # rebuild the qiskit / qiskit-aer wheels (rarely needed)
   cross-origin isolation (below). Without it, Stop restarts the runtime.
 - **Restrictions:** only the bundled packages can be imported (no `pip`), and
   `input()` is disabled.
+- **IBM Quantum hardware:** qiskit-ibm-runtime's fake backends and primitives run
+  locally, but IBM's cloud APIs send no CORS headers, so the browser can't reach them.
+  After install, the worker patches `QiskitRuntimeService.__init__` to raise a clear
+  error instead (`_patch_ibm_runtime` in `bootstrap.py`).
 
 ## Deploying to Cloudflare Pages
 
@@ -194,6 +198,7 @@ not an item inside it), or leave out `placement` for a centered card.
 | rustworkx, dill, stevedore, typing-extensions, python-dateutil, pylatexenc | PyPI via micropip (rustworkx ships an official `pyemscripten_2026_0_wasm32` wheel) |
 | libopenblas | Pyodide distribution, used as the BLAS/LAPACK library for qiskit-aer |
 | **qiskit 2.5.2, qiskit-aer 0.17.2** | Cross-compiled here from the PyPI sdists plus our patches, served from `public/wheels/` |
+| qiskit-algorithms, qiskit-qasm3-import, qiskit-ibm-runtime, pandas, qisdebug | Installed in the background after startup, from PyPI (pandas from Pyodide); a run that imports one waits for it. pydantic comes from PyPI (≥2.13, which qiskit-ibm-runtime needs) rather than Pyodide's 2.12 |
 
 The Pyodide runtime itself (`pyodide.asm.wasm`, the stdlib and the lockfile) is
 installed from npm and served from this app's own origin.

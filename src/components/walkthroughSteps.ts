@@ -116,12 +116,12 @@ export const STEPS: Step[] = [
   },
   {
     id: "packages",
-    since: 2,
+    since: 3,
     title: "Packages",
     icon: LuPackage,
     description:
-      "See which packages are available, including numpy, matplotlib, qiskit and qiskit-aer. pandas, qiskit-algorithms, qiskit-qasm3-import and qisdebug install the first time you import them.",
-    news: "pandas, qiskit-algorithms, qiskit-qasm3-import and qisdebug are now available. They install the first time you import them.",
+      "See which packages are available, including numpy, matplotlib, qiskit and qiskit-aer. pandas, qiskit-algorithms, qiskit-qasm3-import, qiskit-ibm-runtime and qisdebug install the first time you import them.",
+    news: "qiskit-ibm-runtime is now available, with its fake backends and the Sampler and Estimator primitives. It installs the first time you import it.",
     placement: "bottom-end",
     fallback: "more",
   },

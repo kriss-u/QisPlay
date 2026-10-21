@@ -277,6 +277,8 @@ _INDEX_MODULES = [
     "qiskit_algorithms",
     "qiskit_algorithms.optimizers",
     "qiskit_algorithms.minimum_eigensolvers",
+    "qiskit_ibm_runtime",
+    "qiskit_ibm_runtime.fake_provider",
     "qisdebug",
 ]
 
@@ -297,6 +299,39 @@ def _invalidate_index():
     """Rebuild the index on the next completion (after packages were installed)."""
     global _index
     _index = None
+
+
+# IBM's cloud APIs send no CORS headers, so the browser blocks every request
+# QiskitRuntimeService would make. Fail early with a clear message instead of
+# a network error. Backend names (Sampler(mode="ibm_...")) go through it too.
+_NO_HARDWARE = '''
+
+# Patched by QisPlay.
+def _qisplay_no_hardware(self, *args, **kwargs):
+    raise RuntimeError(
+        "Running on IBM Quantum hardware isn't supported in the browser. "
+        "Use a fake backend instead, e.g. FakeBrisbane() from "
+        "qiskit_ibm_runtime.fake_provider, or AerSimulator() from qiskit_aer."
+    )
+
+
+QiskitRuntimeService.__init__ = _qisplay_no_hardware
+'''
+
+
+def _patch_ibm_runtime():
+    """Make QiskitRuntimeService raise; call after installing qiskit-ibm-runtime."""
+    import importlib.util
+
+    spec = importlib.util.find_spec("qiskit_ibm_runtime")
+    if spec is None or spec.origin is None:
+        return
+    path = os.path.join(os.path.dirname(spec.origin), "qiskit_runtime_service.py")
+    with open(path) as f:
+        if "_qisplay_no_hardware" in f.read():
+            return
+    with open(path, "a") as f:
+        f.write(_NO_HARDWARE)
 
 
 def _build_index():
