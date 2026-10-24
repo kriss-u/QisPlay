@@ -16,7 +16,8 @@ const EDITOR_KEYS: { title: string; keys: Keys }[] = [
   { title: "Copy line up / down", keys: "Shift+Alt+ArrowDown" },
   { title: "Delete line", keys: "Mod+Shift+k" },
   { title: "Indent / outdent", keys: "Tab" },
-  { title: "Undo / redo", keys: { mac: "Mod+Shift+z", other: "Ctrl+y" } },
+  { title: "Undo", keys: "Mod+z" },
+  { title: "Redo", keys: { mac: "Mod+Shift+z", other: "Ctrl+y" } },
 ];
 
 function Row({ title, keys }: { title: string; keys: Keys }) {
@@ -49,7 +50,7 @@ export function ShortcutsDialog({ open, onClose, commands }: { open: boolean; on
               </Heading>
               <Box>
                 {commands
-                  .filter((c) => c.keys)
+                  .filter((c) => c.keys && !c.editorOnly)
                   .map((c) => (
                     <Row key={c.id} title={c.title} keys={c.keys!} />
                   ))}

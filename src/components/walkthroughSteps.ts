@@ -48,6 +48,7 @@ export interface Step {
   fallback?: string;
 }
 
+const REDO_KEYS = { mac: "Mod+Shift+z", other: "Ctrl+y" };
 const COPY_KEY = formatKeys({ mac: "Alt", other: "Ctrl" });
 
 export const STEPS: Step[] = [
@@ -73,11 +74,11 @@ export const STEPS: Step[] = [
   },
   {
     id: "editor",
-    since: 2,
+    since: 4,
     title: "Editor",
     icon: LuCodeXml,
-    description: `A VS Code-style editor with autocomplete. Picking a suggestion that isn't imported yet adds the import for you. ${formatKeys("Shift+Enter")} runs the selected lines in the console, and right-clicking opens a menu with run, cut, copy and paste.`,
-    news: "Right-click in the editor to run the file or the selection, and right-click a tab to close others or copy its path.",
+    description: `A VS Code-style editor with autocomplete. Picking a suggestion that isn't imported yet adds the import for you. ${formatKeys("Shift+Enter")} runs the selected lines in the console, and right-clicking opens a menu with undo, redo, run, cut, copy and paste. Undo is ${formatKeys("Mod+z")} and redo is ${formatKeys(REDO_KEYS)}.`,
+    news: `Undo (${formatKeys("Mod+z")}) and redo (${formatKeys(REDO_KEYS)}) are now in the editor's right-click menu and the command palette.`,
     placement: "right-start",
   },
   {

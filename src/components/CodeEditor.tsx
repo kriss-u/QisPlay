@@ -3,24 +3,30 @@ import {
   type Completion as CMCompletion,
   type CompletionContext,
 } from "@codemirror/autocomplete";
-import { indentWithTab } from "@codemirror/commands";
+import { indentWithTab, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
 import { python } from "@codemirror/lang-python";
 import { gotoLine, openSearchPanel, search } from "@codemirror/search";
 import CodeMirror, { EditorState, keymap, Prec, type ReactCodeMirrorRef } from "@uiw/react-codemirror";
-import { useEffect, useMemo, useRef, type MouseEvent } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, type MouseEvent, type Ref } from "react";
 import { activeLine } from "../app/activeLine";
 import { importChange } from "../app/autoImport";
 import { useColorMode } from "../app/colorMode";
 import { editorTheme } from "../app/editorThemes";
 import { rainbowBrackets } from "../app/rainbowBrackets";
 import { useSettings } from "../app/settings";
-import { formatKeys, PALETTE_KEYS } from "../app/shortcuts";
+import { formatKeys, isMac, PALETTE_KEYS } from "../app/shortcuts";
 import type { Completion } from "../python/protocol";
 import { basename, isPython } from "../workspace/paths";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
 import { showError } from "./toast";
 
+export interface EditorHandle {
+  undo(): void;
+  redo(): void;
+}
+
 interface Props {
+  ref?: Ref<EditorHandle>;
   path: string;
   value: string;
   readOnly?: boolean;
@@ -69,7 +75,7 @@ const TYPE_MAP: Record<string, string> = {
   path: "text",
 };
 
-export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelection, onCommandPalette, complete }: Props) {
+export function CodeEditor({ ref, path, value, readOnly, onChange, onRun, onRunSelection, onCommandPalette, complete }: Props) {
   const { colorMode } = useColorMode();
   const { fontSize, zoom } = useSettings();
   // Keep callbacks in refs so the extensions (and editor state) are built once.
@@ -152,6 +158,21 @@ export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelect
 
   const cm = useRef<ReactCodeMirrorRef>(null);
 
+  useImperativeHandle(ref, () => ({
+    undo() {
+      const view = cm.current?.view;
+      if (!view || readOnly) return;
+      undo(view);
+      view.focus();
+    },
+    redo() {
+      const view = cm.current?.view;
+      if (!view || readOnly) return;
+      redo(view);
+      view.focus();
+    },
+  }), [readOnly]);
+
   function menuItems(e: MouseEvent): MenuEntry[] | null {
     const view = cm.current?.view;
     if (!view) return null;
@@ -163,6 +184,9 @@ export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelect
     const empty = view.state.selection.main.empty;
     const py = isPython(path);
     return [
+      { value: "undo", label: "Undo", keys: "Mod+z", disabled: readOnly || !undoDepth(view.state) },
+      { value: "redo", label: "Redo", keys: isMac ? "Mod+Shift+z" : "Ctrl+y", disabled: readOnly || !redoDepth(view.state) },
+      null,
       ...(py && onRun ? [{ value: "run", label: `Run ${basename(path)}`, keys: "Mod+Enter" }] : []),
       ...(py && onRunSelection
         ? [{ value: "run-selection", label: empty ? "Run line in console" : "Run selection in console", keys: "Shift+Enter" }]
@@ -181,6 +205,11 @@ export function CodeEditor({ path, value, readOnly, onChange, onRun, onRunSelect
     if (!view) return;
     if (value === "run") return onRun?.();
     if (value === "palette") return onCommandPalette?.();
+    if (value === "undo" || value === "redo") {
+      (value === "undo" ? undo : redo)(view);
+      view.focus();
+      return;
+    }
     if (value === "run-selection") {
       const code = selectedCode(view.state);
       if (code.trim()) onRunSelection?.(code);

@@ -11,6 +11,11 @@ export interface Command {
   run(): void;
   /** Hidden from the palette when false. */
   enabled?: boolean;
+  /**
+   * The editor's own keymap handles `keys` (shown in the palette), so the global
+   * shortcut handler skips them and the help dialog lists them under Editor.
+   */
+  editorOnly?: boolean;
 }
 
 interface Props {

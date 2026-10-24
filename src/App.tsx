@@ -39,6 +39,7 @@ import { useColorMode, type ColorModeSetting } from "./app/colorMode";
 import { useSettings } from "./app/settings";
 import { formatKeys, matches, PALETTE_KEYS } from "./app/shortcuts";
 import { CommandPalette, type Command } from "./components/CommandPalette";
+import type { EditorHandle } from "./components/CodeEditor";
 import { ConsolePanel, type ConsoleHandle } from "./components/ConsolePanel";
 import { EditorPane } from "./components/EditorPane";
 import { FileExplorer } from "./components/FileExplorer";
@@ -100,6 +101,7 @@ export default function App() {
   const settings = useSettings();
   const output = useRef<OutputTerminalHandle>(null);
   const console_ = useRef<ConsoleHandle>(null);
+  const editor = useRef<EditorHandle>(null);
   const walkthrough = useRef<WalkthroughHandle>(null);
   const sink = useMemo<OutputSink>(
     () => ({
@@ -266,6 +268,14 @@ export default function App() {
       alsoKeys: ["F1", "Mod+Shift+p"],
       run: () => setPalette("commands"),
     },
+    { id: "undo", title: "Undo", keys: "Mod+z", editorOnly: true, run: () => editor.current?.undo() },
+    {
+      id: "redo",
+      title: "Redo",
+      keys: { mac: "Mod+Shift+z", other: "Ctrl+y" },
+      editorOnly: true,
+      run: () => editor.current?.redo(),
+    },
     { id: "sidebar", title: "Toggle file explorer", keys: "Mod+b", run: () => toggle(0) },
     { id: "panel", title: "Toggle output panel", keys: "Mod+j", run: () => toggle(2) },
     {
@@ -334,7 +344,7 @@ export default function App() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.repeat) return; // already handled (e.g. by the editor)
       for (const c of commandsRef.current) {
-        if (c.enabled === false) continue;
+        if (c.enabled === false || c.editorOnly) continue;
         if ((c.keys && matches(c.keys, e)) || c.alsoKeys?.some((k) => matches(k, e))) {
           e.preventDefault();
           c.run();
@@ -387,6 +397,7 @@ export default function App() {
 
   const editorPane = (
     <EditorPane
+      ref={editor}
       ws={ws}
       onRun={() => void onRun()}
       onRunSelection={sendToConsole}

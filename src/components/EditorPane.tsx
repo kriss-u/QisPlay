@@ -1,15 +1,16 @@
 import { Box, Center, CloseButton, Flex, Image, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type Ref } from "react";
 import { LuFileCode } from "react-icons/lu";
 import type { Completion } from "../python/protocol";
 import { basename, imageType } from "../workspace/paths";
 import type { Workspace } from "../workspace/useWorkspace";
-import { CodeEditor } from "./CodeEditor";
+import { CodeEditor, type EditorHandle } from "./CodeEditor";
 import { ContextMenu } from "./ContextMenu";
 import { FileIcon } from "./FileIcon";
 import { showError } from "./toast";
 
 interface Props {
+  ref?: Ref<EditorHandle>;
   ws: Workspace;
   onRun(): void;
   onRunSelection(code: string): void;
@@ -30,7 +31,7 @@ function ImagePreview({ path, data }: { path: string; data: Uint8Array }) {
   );
 }
 
-export function EditorPane({ ws, onRun, onRunSelection, onCommandPalette, complete }: Props) {
+export function EditorPane({ ref, ws, onRun, onRunSelection, onCommandPalette, complete }: Props) {
   const entry = ws.active ? ws.fileMap.get(ws.active) : undefined;
   const content = entry ? ws.contentOf(entry) : undefined;
 
@@ -122,6 +123,7 @@ export function EditorPane({ ws, onRun, onRunSelection, onCommandPalette, comple
           </Center>
         ) : typeof content === "string" ? (
           <CodeEditor
+            ref={ref}
             key={`${ws.project?.id}:${entry.path}`}
             path={entry.path}
             value={content}
