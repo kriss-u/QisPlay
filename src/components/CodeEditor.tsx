@@ -88,12 +88,14 @@ export function CodeEditor({ ref, path, value, readOnly, onChange, onRun, onRunS
   // Keep callbacks in refs so the extensions (and editor state) are built once.
   const runRef = useRef(onRun);
   const runSelectionRef = useRef(onRunSelection);
+  const formatRef = useRef(onFormat);
   const completeRef = useRef(complete);
   useEffect(() => {
     runRef.current = onRun;
     runSelectionRef.current = onRunSelection;
+    formatRef.current = onFormat;
     completeRef.current = complete;
-  }, [onRun, onRunSelection, complete]);
+  }, [onRun, onRunSelection, onFormat, complete]);
 
   const extensions = useMemo(() => {
     async function jediSource(ctx: CompletionContext) {
@@ -157,6 +159,18 @@ export function CodeEditor({ ref, path, value, readOnly, onChange, onRun, onRunS
           // app on macOS and ⌘G is the browser's "find next".
           { key: "Ctrl-h", mac: "Mod-Alt-f", run: openSearchPanel },
           { key: "Ctrl-g", run: gotoLine },
+          // CodeMirror's macOS keymap uses ⌃⇧F to extend the selection, so ours has to outrank it.
+          // Without a formatter this passes the key on, so that still works.
+          {
+            key: "Shift-Alt-f",
+            mac: "Ctrl-Shift-f",
+            run: () => {
+              const fn = formatRef.current;
+              if (!fn || !isPython(path)) return false;
+              fn();
+              return true;
+            },
+          },
           indentWithTab,
         ]),
       ),
