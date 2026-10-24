@@ -16,7 +16,6 @@ import {
   Splitter,
   Tabs,
   Text,
-  Wrap,
   useBreakpointValue,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -33,14 +32,16 @@ import {
   LuSignpost,
   LuSquare,
   LuSun,
+  LuWandSparkles,
 } from "react-icons/lu";
 import { APP_NAME } from "./app/brand";
 import { useColorMode, type ColorModeSetting } from "./app/colorMode";
 import { useSettings } from "./app/settings";
-import { formatKeys, matches, PALETTE_KEYS } from "./app/shortcuts";
+import { FORMAT_KEYS, formatKeys, matches, PALETTE_KEYS } from "./app/shortcuts";
 import { CommandPalette, type Command } from "./components/CommandPalette";
 import type { EditorHandle } from "./components/CodeEditor";
 import { ConsolePanel, type ConsoleHandle } from "./components/ConsolePanel";
+import { PackagesPanel } from "./components/PackagesPanel";
 import { EditorPane } from "./components/EditorPane";
 import { FileExplorer } from "./components/FileExplorer";
 import { Logo } from "./components/Logo";
@@ -53,6 +54,8 @@ import { Walkthrough, type WalkthroughHandle } from "./components/Walkthrough";
 import { showError, toaster } from "./components/toast";
 import { useFileActions } from "./components/useFileActions";
 import { EXAMPLES } from "./examples";
+import { environmentYaml, requirementsTxt, type EnvironmentFile } from "./python/environment";
+import { BLACK, OPTIONAL_PACKAGES } from "./python/optionalPackages";
 import type { ProjectFiles } from "./python/protocol";
 import { usePython, type OutputSink, type RunResult } from "./python/usePython";
 import { isPython } from "./workspace/paths";
@@ -110,7 +113,7 @@ export default function App() {
     }),
     [],
   );
-  const py = usePython(sink);
+  const py = usePython(sink, settings.extraPackages);
   const [panelTab, setPanelTab] = useState("output");
   const [sizes, setSizes] = useState(DEFAULT_SIZES);
   const [compactSizes, setCompactSizes] = useState(COMPACT_SIZES);
@@ -119,6 +122,7 @@ export default function App() {
   const stacked = useBreakpointValue({ base: true, md: false }, { ssr: false }) ?? false;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showPackages, setShowPackages] = useState(false);
+  const [packagesOpen, setPackagesOpen] = useState(false);
   const lastSizes = useRef(DEFAULT_SIZES);
   const [palette, setPalette] = useState<"files" | "commands" | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -176,12 +180,99 @@ export default function App() {
     setCompactSizes((s) => (s[1] > 0 ? s : COMPACT_SIZES));
   }, []);
 
+  /** Adds or removes an optional package from the Packages panel; adding installs it now. */
+  const { setExtraPackage } = settings;
+  const { installTool } = py;
+  const changeTool = useCallback(
+    (id: string, on: boolean) => {
+      setExtraPackage(id, on);
+      if (on) installTool(id);
+    },
+    [setExtraPackage, installTool],
+  );
+
+  /** The packages for requirements.txt / environment.yaml: the basics plus what's added (removed ones may still be loaded). */
+  const environmentPackages = () => {
+    const removed = new Set(OPTIONAL_PACKAGES.map((p) => p.id).filter((id) => !settings.extraPackages.includes(id)));
+    return Object.fromEntries(Object.entries(py.packages).filter(([name]) => !removed.has(name)));
+  };
+
+  const writeEnvironmentFile = async (file: EnvironmentFile, open: boolean) => {
+    const project = ws.project;
+    if (!project) return;
+    const packages = environmentPackages();
+    const content = file === "requirements.txt" ? requirementsTxt(packages) : environmentYaml(packages, project.name);
+    await writeFile(project.id, file, content);
+    ws.applyExternalChanges({ [file]: content });
+    if (open) ws.openFile(file);
+  };
+
+  // Everything about formatting shows only while the Black package is added.
+  const canFormat = settings.extraPackages.includes(BLACK);
+
+  /**
+   * Formats the open Python file with Black. `auto` is a save or run that asked
+   * for it: those skip quietly instead of reporting problems (a syntax error
+   * shows when the code runs anyway).
+   */
+  const formatActive = useCallback(
+    async (auto = false) => {
+      const file = entry ? ws.fileMap.get(entry) : undefined;
+      if (!canFormat) return;
+      if (!file || !editor.current) {
+        if (!auto) toaster.create({ type: "info", title: "Open a .py file to format it" });
+        return;
+      }
+      if (py.state !== "ready") {
+        if (!auto) toaster.create({ type: "info", title: py.state === "running" ? "Wait for your code to finish" : "Python is still starting" });
+        return;
+      }
+      const before = ws.contentOf(file);
+      if (typeof before !== "string") return;
+      const result = await py.format(before, settings.lineLength);
+      if (!result.ok) {
+        if (!auto) toaster.create({ type: "error", title: result.error });
+      } else if (result.code !== before && !editor.current?.replaceText(before, result.code) && !auto) {
+        toaster.create({ type: "info", title: "The file changed while formatting. Try again." });
+      }
+    },
+    [canFormat, entry, ws, settings.lineLength, py],
+  );
+
+  /** Whether each environment file is in the project and matches the packages now. */
+  const environmentFiles = (): Record<EnvironmentFile, "missing" | "current" | "stale"> => {
+    const packages = environmentPackages();
+    const status = (file: EnvironmentFile) => {
+      const entry = ws.fileMap.get(file);
+      if (!entry) return "missing";
+      const expected = file === "requirements.txt" ? requirementsTxt(packages) : environmentYaml(packages, ws.project?.name ?? "");
+      return ws.contentOf(entry) === expected ? "current" : "stale";
+    };
+    return { "requirements.txt": status("requirements.txt"), "environment.yaml": status("environment.yaml") };
+  };
+
+  /** Adds requirements.txt or environment.yaml to the project, or brings it up to date. */
+  const addEnvironmentFile = async (file: EnvironmentFile) => {
+    const existed = ws.fileMap.has(file);
+    try {
+      await writeEnvironmentFile(file, !existed);
+      if (!existed) {
+        setShowPackages(false);
+        setPackagesOpen(false);
+      }
+      toaster.create({ type: "success", title: `${existed ? "Updated" : "Added"} ${file}`, duration: 2000 });
+    } catch (err) {
+      showError(err);
+    }
+  };
+
   const onRun = useCallback(async () => {
     if (!ws.project || py.state !== "ready") return;
     if (!entry) {
       toaster.create({ type: "info", title: "Open a .py file to run it" });
       return;
     }
+    if (settings.formatOnRun) await formatActive(true);
     await ws.flush();
     showPanel();
     setPanelTab("output");
@@ -192,7 +283,7 @@ export default function App() {
     // Show the plots after a successful run; on failure stay on the traceback.
     if (result?.ok && result.figures > 0) setPanelTab("figures");
     await keepChangedFiles(result, (m) => output.current?.write(m, "info"));
-  }, [ws, py, entry, snapshot, keepChangedFiles, showPanel]);
+  }, [ws, py, entry, snapshot, keepChangedFiles, showPanel, settings.formatOnRun, formatActive]);
 
   const runInConsole = useCallback(
     async (source: string) => {
@@ -258,7 +349,19 @@ export default function App() {
       id: "save",
       title: "Save",
       keys: "Mod+s",
-      run: () => void ws.flush().then(() => toaster.create({ type: "success", title: "Saved", duration: 1200 })),
+      run: () =>
+        void (async () => {
+          if (settings.formatOnSave) await formatActive(true);
+          await ws.flush();
+          toaster.create({ type: "success", title: "Saved", duration: 1200 });
+        })(),
+    },
+    {
+      id: "format",
+      title: "Format document",
+      keys: FORMAT_KEYS,
+      enabled: canFormat && entry !== null,
+      run: () => void formatActive(),
     },
     { id: "quick-open", title: "Go to file…", keys: "Mod+p", run: () => setPalette("files") },
     {
@@ -371,28 +474,13 @@ export default function App() {
 
   const busy = py.state === "loading" || py.state === "running";
   const packagesList = (
-    <>
-        <Text fontSize="sm" mb="2" color="fg.muted">
-          Available in this runtime:
-        </Text>
-        <Wrap gap="1.5">
-          {Object.entries(py.packages).map(([name, v]) => (
-            <Badge key={name} variant="subtle" fontFamily="mono">
-              {name} {v}
-            </Badge>
-          ))}
-          {py.loadingPackages.map((name) => (
-            <Badge key={name} variant="outline" fontFamily="mono">
-              {name} — loading…
-            </Badge>
-          ))}
-          {py.missing.map((name) => (
-            <Badge key={name} colorPalette="orange" variant="outline" fontFamily="mono">
-              {name} — not installed
-            </Badge>
-          ))}
-        </Wrap>
-    </>
+    <PackagesPanel
+      py={py}
+      added={settings.extraPackages}
+      onChange={changeTool}
+      onAddFile={(file) => void addEnvironmentFile(file)}
+      files={ws.project ? environmentFiles() : null}
+    />
   );
 
   const editorPane = (
@@ -402,6 +490,7 @@ export default function App() {
       onRun={() => void onRun()}
       onRunSelection={sendToConsole}
       onCommandPalette={() => setPalette("commands")}
+      onFormat={canFormat ? () => void formatActive() : undefined}
       complete={py.complete}
     />
   );
@@ -533,6 +622,20 @@ export default function App() {
             </Box>
           </Button>
         </HStack>
+        {canFormat && (
+          <HStack gap="2" hideBelow="md">
+            <IconButton
+              size="sm"
+              variant="outline"
+              onClick={() => void formatActive()}
+              disabled={!entry || py.state === "loading"}
+              title={`Format document (${formatKeys(FORMAT_KEYS)})`}
+              aria-label="Format document"
+            >
+              <LuWandSparkles />
+            </IconButton>
+          </HStack>
+        )}
 
         {/* Phones: one overflow menu instead of the icon cluster. */}
         <Menu.Root
@@ -541,6 +644,7 @@ export default function App() {
             if (value === "packages") setShowPackages(true);
             else if (value === "shortcuts") setShowShortcuts(true);
             else if (value === "settings") setShowSettings(true);
+            else if (value === "format") void formatActive();
             else if (value === "walkthrough") walkthrough.current?.start();
           }}
         >
@@ -573,6 +677,11 @@ export default function App() {
                   </Menu.RadioItemGroup>
                 </Menu.ItemGroup>
                 <Menu.Separator />
+                {canFormat && (
+                  <Menu.Item value="format" disabled={!entry || py.state === "loading"}>
+                    <LuWandSparkles /> Format document
+                  </Menu.Item>
+                )}
                 <Menu.Item value="packages" disabled={py.state === "loading"}>
                   <LuPackage /> Installed packages
                 </Menu.Item>
@@ -597,7 +706,7 @@ export default function App() {
               {py.status}
             </Text>
           )}
-          <Popover.Root positioning={{ placement: "bottom-end" }}>
+          <Popover.Root positioning={{ placement: "bottom-end" }} open={packagesOpen} onOpenChange={(e) => setPackagesOpen(e.open)}>
             <Popover.Trigger asChild>
               <Button size="xs" variant="ghost" disabled={py.state === "loading"} aria-label="Packages" data-tour="packages">
                 <LuPackage />
@@ -608,7 +717,7 @@ export default function App() {
             </Popover.Trigger>
             <Portal>
               <Popover.Positioner>
-                <Popover.Content width="sm">
+                <Popover.Content width="md">
                   <Popover.Arrow />
                   <Popover.Body>
                     {packagesList}

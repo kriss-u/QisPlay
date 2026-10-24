@@ -8,12 +8,22 @@ function sanitize(s: Partial<Settings>): Settings {
   return {
     zoom: clamp(Math.round(num(s.zoom, DEFAULT_SETTINGS.zoom) * 10) / 10, ZOOM.min, ZOOM.max),
     fontSize: clamp(Math.round(num(s.fontSize, DEFAULT_SETTINGS.fontSize)), FONT_SIZE.min, FONT_SIZE.max),
+    formatOnSave: s.formatOnSave === true,
+    formatOnRun: s.formatOnRun === true,
+    lineLength: clamp(Math.round(num(s.lineLength, DEFAULT_SETTINGS.lineLength)), 40, 200),
+    extraPackages: Array.isArray(s.extraPackages) ? [...new Set(s.extraPackages.filter((t) => typeof t === "string"))] : [],
   };
 }
 
+/** What every session used to load. Returning users keep these; the user can remove them in Packages. */
+const LEGACY_PACKAGES = ["sympy", "pandas", "qiskit-algorithms", "qiskit-qasm3-import", "qiskit-ibm-runtime", "qisdebug"];
+
 function readSettings(): Settings {
   try {
-    return sanitize(JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}"));
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}") as Partial<Settings>;
+    // Settings saved before optional packages existed (any earlier visit writes them): keep those packages.
+    const returning = Object.keys(saved).length > 0 && !("extraPackages" in saved);
+    return sanitize(returning ? { ...saved, extraPackages: LEGACY_PACKAGES } : saved);
   } catch {
     return DEFAULT_SETTINGS; // storage blocked or bad JSON
   }
@@ -40,6 +50,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       ...settings,
       zoomBy: (steps: number) => setSettings((s) => sanitize({ ...s, zoom: s.zoom + steps * ZOOM.step })),
       fontSizeBy: (px: number) => setSettings((s) => sanitize({ ...s, fontSize: s.fontSize + px })),
+      set: (key: "formatOnSave" | "formatOnRun" | "lineLength", value: boolean | number) =>
+        setSettings((s) => sanitize({ ...s, [key]: value })),
+      setExtraPackage: (id: string, on: boolean) =>
+        setSettings((s) => ({ ...s, extraPackages: [...s.extraPackages.filter((t) => t !== id), ...(on ? [id] : [])] })),
       reset: (key: keyof Settings) => setSettings((s) => ({ ...s, [key]: DEFAULT_SETTINGS[key] })),
     }),
     [settings],

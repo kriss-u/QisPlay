@@ -71,7 +71,15 @@ npm run build:wasm # rebuild the qiskit / qiskit-aer wheels (rarely needed)
   paint, with no flash.
 - **Stop:** interrupts running code through a SharedArrayBuffer, which requires
   cross-origin isolation (below). Without it, Stop restarts the runtime.
-- **Restrictions:** only the bundled packages can be imported (no `pip`), and
+- **Packages:** Python starts with numpy, scipy, matplotlib, qiskit and qiskit-aer. The Packages
+  panel adds optional ones (pandas, sympy, qiskit-algorithms, qiskit-ibm-runtime,
+  qiskit-qasm3-import, qisdebug) and the Black formatter; what you add is kept in
+  localStorage and loads in the background on each start. The same panel saves
+  `requirements.txt` or `environment.yaml` into the project.
+- **Formatting:** Black (opt in) formats the open file: `Shift+Alt+F` (`⌃⇧F` on macOS, since
+  `⌥⇧F` types symbols there), the editor's right-click menu, the header button, or the
+  command palette. Settings can format on save or run, and set the line length.
+- **Restrictions:** only the bundled and added packages can be imported (no `pip`), and
   `input()` is disabled.
 - **IBM Quantum hardware:** qiskit-ibm-runtime's fake backends and primitives run
   locally, but IBM's cloud APIs send no CORS headers, so the browser can't reach them.
@@ -198,7 +206,7 @@ not an item inside it), or leave out `placement` for a centered card.
 | rustworkx, dill, stevedore, typing-extensions, python-dateutil, pylatexenc | PyPI via micropip (rustworkx ships an official `pyemscripten_2026_0_wasm32` wheel) |
 | libopenblas | Pyodide distribution, used as the BLAS/LAPACK library for qiskit-aer |
 | **qiskit 2.5.2, qiskit-aer 0.17.2** | Cross-compiled here from the PyPI sdists plus our patches, served from `public/wheels/` |
-| qiskit-algorithms, qiskit-qasm3-import, qiskit-ibm-runtime, pandas, qisdebug | Installed in the background after startup, from PyPI (pandas from Pyodide); a run that imports one waits for it. pydantic comes from PyPI (≥2.13, which qiskit-ibm-runtime needs) rather than Pyodide's 2.12 |
+| qiskit-algorithms, qiskit-qasm3-import, qiskit-ibm-runtime, pandas, sympy, qisdebug, black | Optional: added in the Packages panel, then installed in the background after startup (pandas and sympy from Pyodide, the rest from PyPI). A run that imports one that isn't added prints a hint. pydantic comes from PyPI (≥2.13, which qiskit-ibm-runtime needs) rather than Pyodide's 2.12 |
 
 The Pyodide runtime itself (`pyodide.asm.wasm`, the stdlib and the lockfile) is
 installed from npm and served from this app's own origin.

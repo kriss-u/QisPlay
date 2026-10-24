@@ -14,7 +14,7 @@ import { useColorMode } from "../app/colorMode";
 import { editorTheme } from "../app/editorThemes";
 import { rainbowBrackets } from "../app/rainbowBrackets";
 import { useSettings } from "../app/settings";
-import { formatKeys, isMac, PALETTE_KEYS } from "../app/shortcuts";
+import { FORMAT_KEYS, formatKeys, isMac, PALETTE_KEYS } from "../app/shortcuts";
 import type { Completion } from "../python/protocol";
 import { basename, isPython } from "../workspace/paths";
 import { ContextMenu, type MenuEntry } from "./ContextMenu";
@@ -23,6 +23,11 @@ import { showError } from "./toast";
 export interface EditorHandle {
   undo(): void;
   redo(): void;
+  /**
+   * Swaps in a formatted version of `before` as one undo step, keeping the
+   * cursor and scroll. False (and nothing changes) if the text was edited since.
+   */
+  replaceText(before: string, after: string): boolean;
 }
 
 interface Props {
@@ -35,6 +40,8 @@ interface Props {
   /** Shift+Enter: send the selection (or current line) to the console, like VS Code. */
   onRunSelection?(code: string): void;
   onCommandPalette?(): void;
+  /** Format document (Black); only offered for Python files. */
+  onFormat?(): void;
   /** Jedi completions at (1-based line, 0-based column). */
   complete?(code: string, line: number, column: number, path: string): Promise<Completion[]>;
 }
@@ -75,7 +82,7 @@ const TYPE_MAP: Record<string, string> = {
   path: "text",
 };
 
-export function CodeEditor({ ref, path, value, readOnly, onChange, onRun, onRunSelection, onCommandPalette, complete }: Props) {
+export function CodeEditor({ ref, path, value, readOnly, onChange, onRun, onRunSelection, onCommandPalette, onFormat, complete }: Props) {
   const { colorMode } = useColorMode();
   const { fontSize, zoom } = useSettings();
   // Keep callbacks in refs so the extensions (and editor state) are built once.
@@ -171,6 +178,25 @@ export function CodeEditor({ ref, path, value, readOnly, onChange, onRun, onRunS
       redo(view);
       view.focus();
     },
+    replaceText(before, after) {
+      const view = cm.current?.view;
+      if (!view || readOnly || view.state.doc.toString() !== before) return false;
+      // Only the changed middle is replaced, so the cursor and scroll position stay put.
+      let start = 0;
+      while (start < before.length && start < after.length && before[start] === after[start]) start++;
+      let end = 0;
+      while (
+        end < before.length - start &&
+        end < after.length - start &&
+        before[before.length - 1 - end] === after[after.length - 1 - end]
+      )
+        end++;
+      view.dispatch({
+        changes: { from: start, to: before.length - end, insert: after.slice(start, after.length - end) },
+        userEvent: "input.format",
+      });
+      return true;
+    },
   }), [readOnly]);
 
   function menuItems(e: MouseEvent): MenuEntry[] | null {
@@ -191,6 +217,7 @@ export function CodeEditor({ ref, path, value, readOnly, onChange, onRun, onRunS
       ...(py && onRunSelection
         ? [{ value: "run-selection", label: empty ? "Run line in console" : "Run selection in console", keys: "Shift+Enter" }]
         : []),
+      ...(py && onFormat ? [{ value: "format", label: "Format document", keys: FORMAT_KEYS, disabled: readOnly }] : []),
       null,
       { value: "cut", label: "Cut", keys: "Mod+x", disabled: empty || readOnly },
       { value: "copy", label: "Copy", keys: "Mod+c", disabled: empty },
@@ -205,6 +232,7 @@ export function CodeEditor({ ref, path, value, readOnly, onChange, onRun, onRunS
     if (!view) return;
     if (value === "run") return onRun?.();
     if (value === "palette") return onCommandPalette?.();
+    if (value === "format") return onFormat?.();
     if (value === "undo" || value === "redo") {
       (value === "undo" ? undo : redo)(view);
       view.focus();

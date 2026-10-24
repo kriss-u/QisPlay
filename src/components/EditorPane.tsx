@@ -15,6 +15,7 @@ interface Props {
   onRun(): void;
   onRunSelection(code: string): void;
   onCommandPalette(): void;
+  onFormat?(): void;
   complete(code: string, line: number, column: number, path: string): Promise<Completion[]>;
 }
 
@@ -31,7 +32,7 @@ function ImagePreview({ path, data }: { path: string; data: Uint8Array }) {
   );
 }
 
-export function EditorPane({ ref, ws, onRun, onRunSelection, onCommandPalette, complete }: Props) {
+export function EditorPane({ ref, ws, onRun, onRunSelection, onCommandPalette, onFormat, complete }: Props) {
   const entry = ws.active ? ws.fileMap.get(ws.active) : undefined;
   const content = entry ? ws.contentOf(entry) : undefined;
 
@@ -131,6 +132,7 @@ export function EditorPane({ ref, ws, onRun, onRunSelection, onCommandPalette, c
             onRun={onRun}
             onRunSelection={onRunSelection}
             onCommandPalette={onCommandPalette}
+            onFormat={onFormat}
             complete={complete}
           />
         ) : imageType(entry.path) ? (

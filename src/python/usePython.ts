@@ -28,12 +28,24 @@ const REQUEST_TIMEOUT_MS = 4000;
 // The first completion builds the auto-import index (imports qiskit etc.).
 const COMPLETION_TIMEOUT_MS = 12000;
 
-export function usePython(sink: OutputSink) {
+/** An optional package the user added, in this Python session. */
+export interface ToolStatus {
+  state: "installing" | "installed" | "failed";
+  version?: string;
+  error?: string;
+}
+
+export type FormatResult = { ok: true; code: string } | { ok: false; error: string };
+
+const FORMAT_TIMEOUT_MS = 30000; // may wait for Black to install first
+
+/** `extras`: the optional packages the user added; they install once Python is ready. */
+export function usePython(sink: OutputSink, extras: string[]) {
   const [state, setState] = useState<RuntimeState>("loading");
   const [status, setStatus] = useState("Starting worker…");
   const [packages, setPackages] = useState<Record<string, string>>({});
   const [missing, setMissing] = useState<string[]>([]);
-  const [background, setBackground] = useState<string[]>([]);
+  const [tools, setTools] = useState<Record<string, ToolStatus>>({});
   const [figures, setFigures] = useState<string[]>([]);
   const [pyWindow, setPyWindow] = useState<PyWindow | null>(null);
   const pyWindowRef = useRef<PyWindow | null>(null);
@@ -48,9 +60,13 @@ export function usePython(sink: OutputSink) {
   const windowCalls = useRef(new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>());
   const stateRef = useRef(state);
   const sinkRef = useRef(sink);
+  const extrasRef = useRef(extras);
   useEffect(() => {
     sinkRef.current = sink;
   }, [sink]);
+  useEffect(() => {
+    extrasRef.current = extras;
+  }, [extras]);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -65,6 +81,7 @@ export function usePython(sink: OutputSink) {
     windowCalls.current.clear();
     pyWindowRef.current = null;
     setPyWindow(null);
+    setTools({});
 
     const worker = new PyodideWorker();
     workerRef.current = worker;
@@ -90,12 +107,19 @@ export function usePython(sink: OutputSink) {
         case "ready":
           setPackages(msg.packages);
           setMissing(msg.missing);
-          setBackground(msg.background);
           setStatus("Ready");
           setState("ready");
+          for (const tool of extrasRef.current) worker.postMessage({ type: "install-tool", tool } satisfies ToWorker);
           break;
         case "installed":
           setPackages((p) => ({ ...p, ...msg.packages }));
+          break;
+        case "tool":
+          setTools((t) => ({ ...t, [msg.tool]: { state: msg.state, version: msg.version, error: msg.error } }));
+          break;
+        case "formatted":
+          pending.current.get(msg.id)?.(msg);
+          pending.current.delete(msg.id);
           break;
         case "info":
           sinkRef.current.write(msg.text, "info", msg.target);
@@ -227,6 +251,25 @@ export function usePython(sink: OutputSink) {
     });
   }
 
+  /** Adds an optional package to this session. */
+  const installTool = useCallback((tool: string) => {
+    workerRef.current?.postMessage({ type: "install-tool", tool } satisfies ToWorker);
+  }, []);
+
+  /** Black-formats source. Fails (never throws) if Python is busy, Black is missing or the code has a syntax error. */
+  const format = useCallback(
+    async (code: string, lineLength: number): Promise<FormatResult> => {
+      const reply = await request<Extract<FromWorker, { type: "formatted" }> | null>(
+        { type: "format", id: ++nextId.current, code, lineLength },
+        null,
+        FORMAT_TIMEOUT_MS,
+      );
+      if (!reply) return { ok: false, error: "Python is busy. Try again when it finishes." };
+      return reply.ok ? { ok: true, code: reply.code } : { ok: false, error: reply.error };
+    },
+    [],
+  );
+
   /** Jedi completions; empty while Python is loading or busy. */
   const complete = useCallback(
     (code: string, line: number, column: number, entry: string) =>
@@ -263,8 +306,9 @@ export function usePython(sink: OutputSink) {
     status,
     packages,
     missing,
-    /** Still installing in the background; drops out once it's in `packages`. */
-    loadingPackages: background.filter((name) => !(name in packages)),
+    tools,
+    installTool,
+    format,
     figures,
     setFigures,
     pyWindow,

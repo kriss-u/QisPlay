@@ -20,11 +20,12 @@ import {
   LuPackage,
   LuPlay,
   LuSettings,
+  LuWandSparkles,
   LuSquareTerminal,
   LuSunMoon,
   LuZap,
 } from "react-icons/lu";
-import { formatKeys, PALETTE_KEYS } from "../app/shortcuts";
+import { FORMAT_KEYS, formatKeys, PALETTE_KEYS } from "../app/shortcuts";
 
 /**
  * A feature step. With a placement it spotlights the element marked
@@ -77,7 +78,7 @@ export const STEPS: Step[] = [
     since: 4,
     title: "Editor",
     icon: LuCodeXml,
-    description: `A VS Code-style editor with autocomplete. Picking a suggestion that isn't imported yet adds the import for you. ${formatKeys("Shift+Enter")} runs the selected lines in the console, and right-clicking opens a menu with undo, redo, run, cut, copy and paste. Undo is ${formatKeys("Mod+z")} and redo is ${formatKeys(REDO_KEYS)}.`,
+    description: `A VS Code-style editor with autocomplete. Picking a suggestion that isn't imported yet adds the import for you. ${formatKeys("Shift+Enter")} runs the selected lines in the console, and right-clicking opens a menu with undo, redo, run, format, cut, copy and paste. Undo is ${formatKeys("Mod+z")} and redo is ${formatKeys(REDO_KEYS)}.`,
     news: `Undo (${formatKeys("Mod+z")}) and redo (${formatKeys(REDO_KEYS)}) are now in the editor's right-click menu and the command palette.`,
     placement: "right-start",
   },
@@ -88,6 +89,14 @@ export const STEPS: Step[] = [
     icon: LuPlay,
     description: `Runs the open .py file (${formatKeys("Mod+Enter")} or F5). Stop (${formatKeys("Shift+F5")}) interrupts a long run.`,
     placement: "bottom-start",
+  },
+  {
+    id: "format",
+    since: 5,
+    title: "Format your code",
+    icon: LuWandSparkles,
+    description: `Add the Black formatter in Packages and a Format button appears, along with Format document in the editor's right-click menu and the command palette (${formatKeys(FORMAT_KEYS)}). Settings then lets you format on save or before every run, and pick the line length.`,
+    news: `New: add the Black formatter in Packages to get Format document (${formatKeys(FORMAT_KEYS)}), in the editor's right-click menu too. Settings can then format on save or before running.`,
   },
   {
     id: "panel",
@@ -104,7 +113,7 @@ export const STEPS: Step[] = [
     title: "Debug circuits with QisDebug",
     icon: LuBug,
     description:
-      "Import qisdebug to record every gate, transpiler pass and statevector your circuits go through. debug.show() opens its timeline viewer right here in QisPlay.",
+      "Add qisdebug in Packages, then import it to record every gate, transpiler pass and statevector your circuits go through. debug.show() opens its timeline viewer right here in QisPlay.",
   },
   {
     id: "status",
@@ -117,12 +126,12 @@ export const STEPS: Step[] = [
   },
   {
     id: "packages",
-    since: 3,
+    since: 5,
     title: "Packages",
     icon: LuPackage,
     description:
-      "See which packages are available, including numpy, matplotlib, qiskit and qiskit-aer. pandas, qiskit-algorithms, qiskit-qasm3-import, qiskit-ibm-runtime and qisdebug install the first time you import them.",
-    news: "qiskit-ibm-runtime is now available, with its fake backends and the Sampler and Estimator primitives. It installs the first time you import it.",
+      "Python comes with numpy, scipy, matplotlib, qiskit and qiskit-aer. Add what else you need, such as pandas, sympy, qiskit-algorithms, qiskit-ibm-runtime or qisdebug, and the Black formatter. You can also save requirements.txt or environment.yaml into your project.",
+    news: "Packages now starts with just the basics. Add pandas, sympy, qiskit-algorithms, qiskit-ibm-runtime, qisdebug or the Black formatter when you need them, and save requirements.txt or environment.yaml into your project.",
     placement: "bottom-end",
     fallback: "more",
   },
@@ -137,10 +146,11 @@ export const STEPS: Step[] = [
   },
   {
     id: "settings",
-    since: 1,
+    since: 5,
     title: "Settings",
     icon: LuSettings,
-    description: `Zoom (${formatKeys("Mod+=")} / ${formatKeys("Mod+-")}) and code font size.`,
+    description: `Zoom (${formatKeys("Mod+=")} / ${formatKeys("Mod+-")}), code font size, and formatting: format on save, format on run and line length.`,
+    news: "Settings has formatting options: format on save, format on run and the line length.",
     placement: "bottom-end",
     fallback: "more",
   },
@@ -158,7 +168,7 @@ export const STEPS: Step[] = [
     since: 1,
     title: "More",
     icon: LuEllipsisVertical,
-    description: "Packages, theme, settings and keyboard shortcuts are in this menu.",
+    description: "Format document, packages, theme, settings and keyboard shortcuts are in this menu.",
     placement: "bottom-end",
   },
 ];

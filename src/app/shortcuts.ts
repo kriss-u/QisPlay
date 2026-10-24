@@ -17,6 +17,12 @@ export const isFirefox = typeof navigator !== "undefined" && /firefox/i.test(nav
  */
 export const PALETTE_KEYS = isFirefox ? "F1" : "Mod+Shift+p";
 
+/**
+ * VS Code's Format Document is ⇧⌥F, which macOS reserves for typing symbols, so
+ * macOS uses ⌃⇧F here (VS Code's own is Search there, which QisPlay doesn't have).
+ */
+export const FORMAT_KEYS: Keys = { mac: "Ctrl+Shift+f", other: "Shift+Alt+f" };
+
 /** A shortcut, optionally different on macOS (VS Code does this for a few commands). */
 export type Keys = string | { mac: string; other: string };
 

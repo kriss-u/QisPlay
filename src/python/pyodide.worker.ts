@@ -28,7 +28,6 @@ const PYODIDE_PACKAGES = [
   "numpy",
   "scipy",
   "matplotlib",
-  "sympy",
   "libopenblas",
   "jedi",
 ];
@@ -44,19 +43,23 @@ const PYPI_PACKAGES = [
 // Not on PyPI as wasm wheels; provided via public/wheels once compiled.
 const LOCAL_PACKAGES = ["qiskit", "qiskit_aer"];
 
-const REPORTED = ["numpy", "scipy", "matplotlib", "sympy", "rustworkx", ...LOCAL_PACKAGES];
+// What the Packages panel lists as included. Their dependencies stay out of it.
+const REPORTED = ["numpy", "scipy", "matplotlib", ...LOCAL_PACKAGES];
 
-// Installed in the background once Python is ready, so they don't delay
-// startup. A run whose code uses one (`uses`) waits until it's in. `pyodide`
-// ones ship with Pyodide; the rest come from PyPI.
 /**
+ * Optional packages: the user adds them in the Packages panel (the UI side is
+ * src/python/optionalPackages.ts) and the ones still added install in the
+ * background on each start. A run that uses one that isn't in gets a hint.
+ * `uses` spots a package in project code.
+ *
  * `pyodide`: ships with the runtime. `needs`: runtime packages to load first,
  * quietly; list any that its PyPI install would otherwise pull from Pyodide.
  * `nodeps`: install from PyPI without its declared dependencies. `pypi`:
  * requirements to install from PyPI (with their dependencies) alongside it.
  */
-type Background = { name: string; uses: RegExp; pyodide?: boolean; needs?: string[]; nodeps?: boolean; pypi?: string[] };
-const BACKGROUND: Background[] = [
+type Optional = { name: string; uses: RegExp; pyodide?: boolean; needs?: string[]; nodeps?: boolean; pypi?: string[] };
+const OPTIONAL: Optional[] = [
+  { name: "sympy", uses: /\bsympy\b/, pyodide: true },
   { name: "qiskit-algorithms", uses: /\bqiskit_algorithms\b/ }, // VQE, QAOA, Grover, optimizers
   // Only qasm3.load/loads need it; qasm3.dumps and loads_experimental are built in.
   { name: "qiskit-qasm3-import", uses: /\bqasm3\.loads?\b|\bqiskit_qasm3_import\b/ },
@@ -78,8 +81,11 @@ const BACKGROUND: Background[] = [
     nodeps: true,
     pypi: ["pydantic>=2.13"],
   },
+  // The formatter, not something project code imports.
+  { name: "black", uses: /(?!)/ },
 ];
 const installed = new Set<string>();
+const tools = new Map<string, "installing" | "installed" | "failed">();
 let background: Promise<void> = Promise.resolve();
 
 let py: PyodideInterface | undefined;
@@ -172,9 +178,7 @@ import _runner
     if (v) packages[name] = v;
     else missing.push(name);
   }
-  post({ type: "ready", packages, missing, background: BACKGROUND.map((p) => p.name) });
-  // A failure here is retried when code actually uses the package.
-  background = install(BACKGROUND.map((p) => p.name)).catch(() => {});
+  post({ type: "ready", packages, missing });
 }
 
 /** Installed versions by distribution name (null if missing). */
@@ -199,7 +203,7 @@ def _v(n):
  * the user's output, so its packages go through loadPackage with messages off.
  */
 async function install(names: string[]) {
-  const spec = (n: string) => BACKGROUND.find((p) => p.name === n);
+  const spec = (n: string) => OPTIONAL.find((p) => p.name === n);
   const fromPyodide = names.filter((n) => spec(n)?.pyodide);
   const fromPypi = names.filter((n) => !fromPyodide.includes(n));
   const withDeps = [...fromPypi.filter((n) => !spec(n)?.nodeps), ...names.flatMap((n) => spec(n)?.pypi ?? [])];
@@ -225,20 +229,50 @@ async function install(names: string[]) {
   post({ type: "installed", packages: found as Record<string, string> });
 }
 
-/** Before running code that uses a background package: wait for it, or retry if that failed. */
-async function installUsed(sources: string[], kind: Target) {
-  const code = sources.join("\n");
-  const used = BACKGROUND.filter((p) => p.uses.test(code)).map((p) => p.name);
-  if (!used.length || used.every((n) => installed.has(n))) return;
-  post({ type: "info", text: `[loading ${used.filter((n) => !installed.has(n)).join(", ")}…]\n`, target: kind });
+/** Adds an optional package, after any install already running, and reports its state. */
+function installTool(tool: string) {
+  const state = tools.get(tool);
+  if (!OPTIONAL.some((p) => p.name === tool) || state === "installed" || state === "installing") return background;
+  tools.set(tool, "installing");
+  post({ type: "tool", tool, state: "installing" });
+  background = background.then(async () => {
+    try {
+      await install([tool]);
+      tools.set(tool, "installed");
+      post({ type: "tool", tool, state: "installed", version: versions([tool])[tool] ?? undefined });
+    } catch (err) {
+      tools.set(tool, "failed");
+      post({ type: "tool", tool, state: "failed", error: String(err).trim().split("\n").pop() });
+    }
+  });
+  return background;
+}
+
+/** Formats `code` with Black, waiting for it if it is still installing. */
+async function format(id: number, code: string, lineLength: number) {
   await background;
-  const needed = used.filter((n) => !installed.has(n));
-  if (!needed.length) return;
-  try {
-    await install(needed);
-  } catch (err) {
-    const reason = String(err).trim().split("\n").pop();
-    post({ type: "stderr", text: `Couldn't install ${needed.join(", ")}: ${reason}\n`, target: kind });
+  let reply = { ok: false, code: "", error: "Black isn't installed" };
+  if (runner && tools.get("black") === "installed") {
+    try {
+      const result = runner._format(code, lineLength);
+      const [ok, text] = result.toJs() as [boolean, string];
+      result.destroy();
+      reply = ok ? { ok, code: text, error: "" } : { ok, code: "", error: text };
+    } catch (err) {
+      reply.error = `Can't format: ${String(err).trim().split("\n").pop()}`;
+    }
+  }
+  post({ type: "formatted", id, ...reply });
+}
+
+/** Before running code that imports an optional package: wait if it's installing, else say how to add it. */
+async function hintMissing(sources: string[], kind: Target) {
+  const code = sources.join("\n");
+  const used = OPTIONAL.filter((p) => p.uses.test(code)).map((p) => p.name);
+  if (used.some((n) => tools.get(n) === "installing")) await background;
+  const missing = used.filter((n) => !installed.has(n));
+  if (missing.length) {
+    post({ type: "info", text: `[${missing.join(", ")} isn't added yet: add it in Packages]\n`, target: kind });
   }
 }
 
@@ -309,10 +343,10 @@ ctx.onmessage = async (event: MessageEvent<ToWorker>) => {
       post({ type: "fatal", error: String(err) });
     }
   } else if (msg.type === "run") {
-    await installUsed(pythonSources(msg.files), "run");
+    await hintMissing(pythonSources(msg.files), "run");
     execute(msg.id, "run", (f, d) => runner!._run(msg.entry, f, d), msg.files, msg.columns);
   } else if (msg.type === "console") {
-    await installUsed([msg.source, ...pythonSources(msg.files)], "console");
+    await hintMissing([msg.source, ...pythonSources(msg.files)], "console");
     execute(msg.id, "console", (f, d) => runner!._console(msg.source, f, d), msg.files, msg.columns);
   } else if (msg.type === "sync") {
     // Keep the project on disk current so autocomplete sees other files' latest code.
@@ -328,6 +362,10 @@ ctx.onmessage = async (event: MessageEvent<ToWorker>) => {
         d.destroy();
       }
     }
+  } else if (msg.type === "install-tool") {
+    void installTool(msg.tool);
+  } else if (msg.type === "format") {
+    await format(msg.id, msg.code, msg.lineLength);
   } else if (msg.type === "console-reset") {
     runner?._console_reset();
   } else if (msg.type === "is-complete") {

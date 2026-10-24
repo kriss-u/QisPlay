@@ -25,6 +25,9 @@ export type ToWorker =
   | { type: "console"; id: number; source: string; files: ProjectFiles; columns: number }
   | { type: "console-reset" }
   | { type: "sync"; files: ProjectFiles }
+  // Adds an optional package (see OPTIONAL in the worker).
+  | { type: "install-tool"; tool: string }
+  | { type: "format"; id: number; code: string; lineLength: number }
   | { type: "is-complete"; id: number; source: string }
   | { type: "complete"; id: number; code: string; line: number; column: number; entry: string }
   // A page opened through the `webview` stand-in calls its Python js_api.
@@ -33,9 +36,12 @@ export type ToWorker =
 
 export type FromWorker =
   | { type: "status"; text: string }
-  // background: packages still installing after "ready" (reported via "installed").
-  | { type: "ready"; packages: Record<string, string>; missing: string[]; background: string[] }
+  | { type: "ready"; packages: Record<string, string>; missing: string[] }
   | { type: "installed"; packages: Record<string, string> }
+  // Progress of an optional package the user added.
+  | { type: "tool"; tool: string; state: "installing" | "installed" | "failed"; version?: string; error?: string }
+  // ok: `code` is the formatted source; otherwise `error` says why it couldn't be.
+  | { type: "formatted"; id: number; ok: boolean; code: string; error: string }
   | { type: "info"; text: string; target: Target }
   | { type: "fatal"; error: string }
   | { type: "stdout"; text: string; target: Target }

@@ -465,3 +465,23 @@ def _complete(code, line, column, entry):
 
 
 os.makedirs(PROJECT_DIR, exist_ok=True)
+
+
+# --- Formatting (Black is an opt-in tool, installed on request) ---------------
+
+
+def _format(code, line_length):
+    """Black-format `code`: (True, formatted) or (False, the reason it can't be)."""
+    import re
+
+    import black
+
+    try:
+        return True, black.format_str(code, mode=black.Mode(line_length=line_length))
+    except black.InvalidInput as e:
+        # "cannot parse: 3:7: <source line>" -> "syntax error at line 3, column 7"
+        where = re.search(r"(\d+):(\d+)", str(e))
+        detail = f"syntax error at line {where[1]}, column {int(where[2]) + 1}" if where else "syntax error"
+        return False, f"Can't format: {detail}"
+    except Exception as e:  # noqa: BLE001 - whatever Black raises, the editor just reports it
+        return False, f"Can't format: {e}"
