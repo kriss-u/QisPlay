@@ -54,7 +54,7 @@ import { Walkthrough, type WalkthroughHandle } from "./components/Walkthrough";
 import { showError, toaster } from "./components/toast";
 import { useFileActions } from "./components/useFileActions";
 import { EXAMPLES } from "./examples";
-import { environmentYaml, requirementsTxt, type EnvironmentFile } from "./python/environment";
+import { ENVIRONMENT_FILES, environmentYaml, requirementsTxt, type EnvironmentFile } from "./python/environment";
 import { BLACK, OPTIONAL_PACKAGES } from "./python/optionalPackages";
 import type { ProjectFiles } from "./python/protocol";
 import { usePython, type OutputSink, type RunResult } from "./python/usePython";
@@ -266,6 +266,33 @@ export default function App() {
       showError(err);
     }
   };
+
+  // When the packages change and a saved environment file no longer matches, offer to update it.
+  const packagesKey = JSON.stringify(environmentPackages());
+  const packagesSeen = useRef<string | null>(null);
+  const offerUpdate = useRef<() => void>(() => {});
+  useEffect(() => {
+    offerUpdate.current = () => {
+      const stale = ENVIRONMENT_FILES.filter((f) => environmentFiles()[f] === "stale");
+      if (!stale.length) return;
+      toaster.create({
+        id: "environment-update",
+        type: "info",
+        title: "Your packages changed",
+        description: `Update ${stale.join(" and ")}?`,
+        duration: 15000,
+        action: { label: "Update", onClick: () => stale.forEach((f) => void addEnvironmentFile(f)) },
+      });
+    };
+  });
+  useEffect(() => {
+    if (py.state !== "ready") return;
+    const previous = packagesSeen.current;
+    packagesSeen.current = packagesKey;
+    if (previous === null || previous === packagesKey) return; // first sight, or only the run state changed
+    const timer = setTimeout(() => offerUpdate.current(), 1500); // batch installs into one prompt
+    return () => clearTimeout(timer);
+  }, [packagesKey, py.state]);
 
   const onRun = useCallback(async () => {
     if (!ws.project || py.state !== "ready") return;

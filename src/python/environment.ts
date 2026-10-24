@@ -7,15 +7,12 @@ export type EnvironmentFile = (typeof ENVIRONMENT_FILES)[number];
 /** Shipped with Pyodide and also on conda-forge; the rest are pip packages. */
 const CONDA = new Set(["numpy", "scipy", "matplotlib", "sympy", "pandas"]);
 
-/** Tools for working on the code, not something the project needs to run. */
-const DEV_ONLY = new Set(["black"]);
-
 const normalize = (name: string) => name.toLowerCase().replace(/[_.]+/g, "-");
 
 /** Distribution names with versions, minus the interpreter, sorted. */
 function entries(packages: Record<string, string>) {
   return Object.entries(packages)
-    .filter(([name]) => name !== "python" && !DEV_ONLY.has(name))
+    .filter(([name]) => name !== "python")
     .map(([name, version]) => [normalize(name), version] as const)
     .sort(([a], [b]) => a.localeCompare(b));
 }

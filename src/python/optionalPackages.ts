@@ -15,6 +15,7 @@ export const OPTIONAL_PACKAGES: OptionalPackage[] = [
   { id: "pandas", group: "libraries", description: "Data tables and analysis." },
   { id: "sympy", group: "libraries", description: "Symbolic math." },
   { id: "black", group: "tools", description: "Code formatter. Powers Format document, format on save and format on run." },
+  { id: "icecream", group: "tools", description: "Debug prints made easy: ic(x) shows the expression and its value." },
 ];
 
 export const BLACK = "black";

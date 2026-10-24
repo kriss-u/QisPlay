@@ -83,6 +83,9 @@ const OPTIONAL: Optional[] = [
   },
   // The formatter, not something project code imports.
   { name: "black", uses: /(?!)/ },
+  // ic() prints the expression and its value; it reads the script's source via
+  // executing, which works because runs are compiled from real files.
+  { name: "icecream", uses: /\bicecream\b/, needs: ["pygments"] },
 ];
 const installed = new Set<string>();
 const tools = new Map<string, "installing" | "installed" | "failed">();
@@ -98,10 +101,17 @@ let target: Target = "run";
 const post = (msg: FromWorker) => ctx.postMessage(msg);
 const status = (text: string) => post({ type: "status", text });
 
+// Installs print progress ("Loading click", "six already loaded") to stdout, which is
+// the user's output. Runs are synchronous, so whatever is written while an install
+// is under way and no run is executing belongs to the installer, not the user.
+let installing = 0;
+let executing = false;
+
 function streamTo(type: "stdout" | "stderr") {
   const decoder = new TextDecoder();
   return {
     write(buf: Uint8Array) {
+      if (installing > 0 && !executing) return buf.length;
       post({ type, text: decoder.decode(buf, { stream: true }), target });
       return buf.length;
     },
@@ -210,15 +220,20 @@ async function install(names: string[]) {
   const noDeps = fromPypi.filter((n) => spec(n)?.nodeps);
   const runtime = [...fromPyodide, ...names.flatMap((n) => spec(n)?.needs ?? [])];
   const quiet = { messageCallback: () => {}, errorCallback: () => {} };
-  if (runtime.length) await py!.loadPackage(runtime, quiet);
-  if (fromPypi.length) {
-    const micropip = py!.pyimport("micropip");
-    try {
-      if (withDeps.length) await micropip.install.callKwargs(withDeps, { verbose: false });
-      if (noDeps.length) await micropip.install.callKwargs(noDeps, { deps: false, verbose: false });
-    } finally {
-      micropip.destroy();
+  installing++;
+  try {
+    if (runtime.length) await py!.loadPackage(runtime, quiet);
+    if (fromPypi.length) {
+      const micropip = py!.pyimport("micropip");
+      try {
+        if (withDeps.length) await micropip.install.callKwargs(withDeps, { verbose: false });
+        if (noDeps.length) await micropip.install.callKwargs(noDeps, { deps: false, verbose: false });
+      } finally {
+        micropip.destroy();
+      }
     }
+  } finally {
+    installing--;
   }
   const found = versions(names);
   const failed = names.filter((n) => !found[n]);
@@ -304,6 +319,7 @@ function execute(
   let changed: Record<string, string | Uint8Array> = {};
   const pyFiles = py.toPy(files.files);
   const pyDirs = py.toPy(files.dirs);
+  executing = true;
   try {
     const result = call(pyFiles, pyDirs);
     const [okValue, changedProxy] = result.toJs({ depth: 1 });
@@ -314,6 +330,7 @@ function execute(
   } catch (err) {
     post({ type: "stderr", text: `${String(err)}\n`, target });
   } finally {
+    executing = false;
     pyFiles.destroy();
     pyDirs.destroy();
   }
