@@ -1,6 +1,6 @@
 import { Text } from "@chakra-ui/react";
 import type { FileEntry } from "../workspace/db";
-import { basename, dirname, join, validateName } from "../workspace/paths";
+import { ancestors, basename, dirname, join, validateName } from "../workspace/paths";
 import type { Workspace } from "../workspace/useWorkspace";
 import { EXAMPLES } from "../examples";
 import { copyEntry, createEntry, deleteEntry, renameEntry, uniquePath } from "../workspace/workspace";
@@ -12,20 +12,27 @@ export function useFileActions(ws: Workspace, onReveal?: (folder: string) => voi
   const dialogs = useDialogs();
   const projectId = ws.project?.id;
 
-  async function create(parent: string, kind: "file" | "dir") {
+  /** Why `value` (possibly nested, "a/b/c.py") can't be created in `parent`, or null if it can. */
+  function checkNew(parent: string, value: string) {
+    const segments = value.replace(/\/+$/, "").split("/");
+    for (const segment of segments) {
+      const error = validateName(segment);
+      if (error) return error;
+    }
+    const path = join(parent, segments.join("/"));
+    if (ws.fileMap.has(path)) return `"${path}" already exists`;
+    const blocker = ancestors(path).find((dir) => ws.fileMap.get(dir)?.kind === "file");
+    return blocker ? `"${blocker}" is a file, not a folder` : null;
+  }
+
+  /** Creates `value` (nested folders included) in `parent`; opens it if it's a file. Returns its path. */
+  async function create(parent: string, kind: "file" | "dir", value: string) {
     if (!projectId) return;
-    const name = await dialogs.prompt({
-      title: kind === "file" ? "New file" : "New folder",
-      label: parent ? `In ${parent}/` : "In the project root",
-      initial: kind === "file" ? "untitled.py" : "",
-      confirmLabel: "Create",
-      validate: (v) => validateName(v) ?? (ws.fileMap.has(join(parent, v)) ? "That name is taken" : null),
-    });
-    if (!name) return;
     try {
-      const path = await createEntry(projectId, parent, name, kind);
-      if (parent) onReveal?.(parent);
+      const path = await createEntry(projectId, parent, value.replace(/\/+$/, ""), kind);
+      for (const dir of ancestors(path)) onReveal?.(dir);
       if (kind === "file") ws.openFile(path);
+      return path;
     } catch (err) {
       showError(err);
     }
@@ -113,5 +120,5 @@ export function useFileActions(ws: Workspace, onReveal?: (folder: string) => voi
     }
   }
 
-  return { create, rename, move, copy, remove, addExample };
+  return { checkNew, create, rename, move, copy, remove, addExample };
 }

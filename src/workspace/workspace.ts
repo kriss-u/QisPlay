@@ -75,8 +75,11 @@ export async function createEntry(
   kind: "file" | "dir",
   content = "",
 ) {
-  const error = validateName(name);
-  if (error) throw new WorkspaceError(error);
+  // `name` may be nested ("a/b/c.py"); the folders on the way are created.
+  for (const segment of name.split("/")) {
+    const error = validateName(segment);
+    if (error) throw new WorkspaceError(error);
+  }
   const path = join(parent, name);
   await db.transaction("rw", db.files, db.projects, async () => {
     if (await db.files.get([projectId, path])) {
@@ -86,7 +89,9 @@ export async function createEntry(
       await putFile(projectId, path, content);
     } else {
       for (const dir of [...ancestors(path), path]) {
-        if (!(await db.files.get([projectId, dir]))) {
+        const existing = await db.files.get([projectId, dir]);
+        if (existing?.kind === "file") throw new WorkspaceError(`"${dir}" is a file, not a folder`);
+        if (!existing) {
           await db.files.put({ projectId, path: dir, kind: "dir", content: "", updatedAt: now() });
         }
       }

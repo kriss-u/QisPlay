@@ -43,7 +43,7 @@ import type { EditorHandle } from "./components/CodeEditor";
 import { ConsolePanel, type ConsoleHandle } from "./components/ConsolePanel";
 import { PackagesPanel } from "./components/PackagesPanel";
 import { EditorPane } from "./components/EditorPane";
-import { FileExplorer } from "./components/FileExplorer";
+import { FileExplorer, type Creating } from "./components/FileExplorer";
 import { Logo } from "./components/Logo";
 import { OutputTerminal, type OutputTerminalHandle } from "./components/OutputTerminal";
 import { ProjectMenu } from "./components/ProjectMenu";
@@ -121,6 +121,7 @@ export default function App() {
   const compact = useBreakpointValue({ base: true, lg: false }, { ssr: false }) ?? false;
   const stacked = useBreakpointValue({ base: true, md: false }, { ssr: false }) ?? false;
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [creating, setCreating] = useState<Creating | null>(null);
   const [showPackages, setShowPackages] = useState(false);
   const [packagesOpen, setPackagesOpen] = useState(false);
   const lastSizes = useRef(DEFAULT_SIZES);
@@ -332,6 +333,17 @@ export default function App() {
     });
   }, [compact]);
 
+  /** Starts an inline new file/folder in the explorer, showing the explorer first. */
+  const startCreate = useCallback(
+    (parent: string | null, kind: "file" | "dir") => {
+      if (compact) setDrawerOpen(true);
+      else setSizes((s) => (s[0] > 0 ? s : [lastSizes.current[0] || DEFAULT_SIZES[0], Math.max(25, s[1] - (lastSizes.current[0] || DEFAULT_SIZES[0])), s[2]]));
+      setCreating({ parent, kind });
+    },
+    [compact],
+  );
+  const explorerProps = { creating, onCreate: startCreate, onEndCreate: () => setCreating(null) };
+
   const cycleTab = useCallback(
     (dir: 1 | -1) => {
       if (!ws.tabs.length) return;
@@ -391,8 +403,8 @@ export default function App() {
         setTimeout(() => console_.current?.focus(), 50);
       },
     },
-    { id: "new-file", title: "New file…", keys: "Alt+n", run: () => void fileActions.create("", "file") },
-    { id: "new-folder", title: "New folder…", run: () => void fileActions.create("", "dir") },
+    { id: "new-file", title: "New file…", keys: "Alt+n", run: () => void startCreate(null, "file") },
+    { id: "new-folder", title: "New folder…", keys: "Alt+Shift+n", run: () => void startCreate(null, "dir") },
     { id: "templates", title: "New project from template…", run: () => openGallery() },
     ...EXAMPLES.map((ex, i) => ({
       id: `example-${i}`,
@@ -819,7 +831,7 @@ export default function App() {
           borderWidth="0"
         >
           <Splitter.Panel id="files" data-tour="explorer">
-            <FileExplorer ws={ws} />
+            <FileExplorer ws={ws} {...explorerProps} />
           </Splitter.Panel>
           <Splitter.ResizeTrigger id="files:editor" aria-label="Resize file explorer" />
           <Splitter.Panel id="editor" data-tour="editor">
@@ -833,14 +845,14 @@ export default function App() {
       )}
 
       {compact && (
-        <Drawer.Root open={drawerOpen} onOpenChange={(e) => setDrawerOpen(e.open)} placement="start" size="xs">
+        <Drawer.Root open={drawerOpen} onOpenChange={(e) => { setDrawerOpen(e.open); if (!e.open) setCreating(null); }} placement="start" size="xs">
           <Portal>
             <Drawer.Backdrop />
             <Drawer.Positioner>
               <Drawer.Content>
                 <Drawer.Title srOnly>Files</Drawer.Title>
                 <Drawer.Body p="0" display="flex" flexDirection="column">
-                  <FileExplorer ws={ws} onOpenFile={() => setDrawerOpen(false)} />
+                  <FileExplorer ws={ws} {...explorerProps} onOpenFile={() => setDrawerOpen(false)} />
                 </Drawer.Body>
               </Drawer.Content>
             </Drawer.Positioner>

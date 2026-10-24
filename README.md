@@ -62,7 +62,7 @@ npm run build:wasm # rebuild the qiskit / qiskit-aer wheels (rarely needed)
   plus a command palette (`F1`, or `Mod+Shift+P` except on Firefox), quick open
   (`Mod+P`) and a help dialog. Keys that browsers or the OS reserve never reach a
   page, so those commands use alternatives:
-  - **New file / close tab:** `Ctrl+N` and `Ctrl+W` become `Alt+N` and `Alt+W`.
+  - **New file / new folder / close tab:** `Ctrl+N` and `Ctrl+W` become `Alt+N` and `Alt+W`; new folder is `Alt+Shift+N`.
   - **Switch editor tab:** `Ctrl+PgUp/PgDn` and `⌘⌥←/→` become `Alt+PgUp/PgDn`, or
     `⌃⌥←/→` on macOS.
   - **Replace:** `⌘H` on macOS becomes `⌘⌥F`.
