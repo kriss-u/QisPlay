@@ -130,8 +130,8 @@ export const STEPS: Step[] = [
     title: "Packages",
     icon: LuPackage,
     description:
-      "Python comes with numpy, scipy, matplotlib, qiskit and qiskit-aer. Add what else you need, such as pandas, sympy, qiskit-algorithms, qiskit-ibm-runtime or qisdebug, and the Black formatter. You can also save requirements.txt or environment.yaml into your project.",
-    news: "Packages now starts with just the basics. Add pandas, sympy, qiskit-algorithms, qiskit-ibm-runtime, qisdebug or the Black formatter when you need them, and save requirements.txt or environment.yaml into your project.",
+      "Python comes with numpy, scipy, matplotlib, qiskit and qiskit-aer. Add what else you need, such as pandas, sympy, qiskit-algorithms, qiskit-ibm-runtime or qisdebug, and the Black formatter. You can also save requirements.txt or environment.yaml into your project, and update them when your packages change.",
+    news: "You choose your packages now. Add or remove pandas, sympy, qiskit-algorithms, qiskit-ibm-runtime, qisdebug and more (new visitors start with just the basics; the ones you already use stay), add the Black formatter, and save requirements.txt or environment.yaml into your project, with an update button when your packages change.",
     placement: "bottom-end",
     fallback: "more",
   },
